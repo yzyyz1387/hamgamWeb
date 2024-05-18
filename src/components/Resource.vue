@@ -8,8 +8,13 @@
     </p>
     <p class="contributor">
       <span>贡献者: {{ src.contributor }}</span>
-
+    
     </p>
+    <div class="share">
+      <i class="el-icon-share" aria-hidden="true" @click="SharePic(src.url)" v-if="!tempPicUrl"  title="分享图片"/></i>
+      <a href="/"  v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"/></i></a>
+
+    </div>
   </div>
 </div>
 <div class="masonry" v-else>
@@ -23,57 +28,95 @@
 <script>
 export default {
     name: "Resource",
+    props: {
+      picUrl: {
+        type: String,
+        default: ""
+      }
+    },
     data() {
         return {
             res: {
-            }
+            },
+            tempPicUrl:""
         }
     },
     created(){
-      this.updateData()
+      this.updateData();
       window.ViewImage && ViewImage.init('.item img');
     },
+mounted() {
+  this.updateData().then(() => {
+    this.updateRes();
+  });
+},
     methods: {
-      async updateData(){
-        let url = "https://jsd.seeku.site/yzyyz1387/hamgam/pic_res.json"
-        let dataUrl = ""
-        await axios.get(url)
-        .then(res=>{
-        //  如果res.data有url字段，打印出来
-        if (res.data["url"]) {
-          dataUrl = res.data["url"]
-          axios.get(dataUrl)
-          .then(res => {
-            let data = res.data
-            let keys = Object.keys(data)
-            let newData = {}
-            keys.sort(() => Math.random() - 0.5)
-            keys.forEach(key => {
-              newData[key] = data[key]
-            })
-            this.res = newData
-          })
-          .catch((error) => {
-            console.log(error)
-          })
+      SharePic(url) {
+        const input = document.createElement('input');
+        document.body.appendChild(input);
+        let location = window.location.href.split('#')[0]
+        input.setAttribute('value', `${location}#/${url}`);
+        input.select();
+        if (document.execCommand('copy')) {
+          document.execCommand('copy');
+          this.$message({
+            message: '图片链接已复制到剪贴板',
+            type: 'success',
+            duration: 1500
+          });
         }
-          
-        })
-        .catch((error) => {
-          console.log(error)
-        })
-        
+        document.body.removeChild(input);
+      },
+    updateRes() {
+    const picUrl = this.$route.params.picUrl;
+    if (picUrl) {
+      for (let key in this.res) {
+        if (this.res[key].url==picUrl ) {
+          this.tempPicUrl = picUrl;
+          this.res = {
+            [key]: this.res[key]
+          }
+          break;
+        }
+      }
     }
-  }
-}
+  },
+      async updateData() {
+        let url = "https://jsd.seeku.site/yzyyz1387/hamgam/pic_res.json";
+        try {
+          let res = await axios.get(url);
+          if (res.data["url"]) {
+            let dataUrl = res.data["url"];
+            let res2 = await axios.get(dataUrl);
+            let data = res2.data;
+            let keys = Object.keys(data);
+            let newData = {};
+            keys.sort(() => Math.random() - 0.5);
+            keys.forEach(key => {
+              newData[key] = data[key];
+            });
+            this.res = newData;
+            console.log('data');
+          }
+        } catch (error) {
+          console.log(error);
+        }
+      }
+}}
 </script>
 
 <style scoped>
+a{
+  text-decoration: none;
+  color: #3898fc;
+
+}
 .masonry {
   width: 1440px;
   margin: 20px auto;
   columns: 4;
   column-gap: 30px;
+
 }
 .item {
   width: 100%;
@@ -82,9 +125,10 @@ export default {
   transition: all 0.3s ease;
   border: 1px solid #f0f0f0;
   background-color: #fff;
+  position: relative;
 }
 .item:hover{
-  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1); 
   transform: translateY(-5px);
 }
 
@@ -111,6 +155,23 @@ export default {
    background-color: #cecece78;
     padding: 2px 5px;
     border-radius: 15px;
+}
+.share{
+  height: 40px;
+  width: 40px;
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  color: #3898fc70;
+  font-size: 1.5em;
+  border-radius: 50%;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+.share:hover{
+  color: #3898fc;
+
 }
 @media screen and (min-width: 1024px) and (max-width: 1439.98px) {
   .masonry {
