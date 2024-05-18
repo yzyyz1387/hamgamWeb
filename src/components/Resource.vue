@@ -96,7 +96,6 @@ mounted() {
               newData[key] = data[key];
             });
             this.res = newData;
-            console.log('data');
           }
         } catch (error) {
           console.log(error);
