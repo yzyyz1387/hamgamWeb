@@ -35,17 +35,17 @@
   <div class="outer" v-else>
       <div class="show-one">
         <div class="item item-one">
-                  <img :src="config.cdn + randomData.url">
-        <h2>{{ randomData.name }}</h2>
+                  <img :src="config.cdn + randomData[randomIndex].url">
+        <h2>{{ randomData[randomIndex].name }}</h2>
         <p>
-            {{ randomData.dec }}
+            {{ randomData[randomIndex].dec }}
         </p>
         <p class="contributor">
-          <span>贡献者: {{ randomData.contributor }}</span>
+          <span>贡献者: {{ randomData[randomIndex].contributor }}</span>
         
         </p>
         <div class="share">
-          <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData.url)" v-if="!tempPicUrl"  title="分享图片"></i>
+          <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData[randomIndex].url)" v-if="!tempPicUrl"  title="分享图片"></i>
           <a href="/"  v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
         </div>
@@ -71,9 +71,10 @@ export default {
           config: config,
             res: {
             },
-            randomData:{},
             tempPicUrl:"",
-            randomMode:false
+            randomMode:false,
+            randomData:[],
+            randomIndex:-1,
 
         }
     },
@@ -88,14 +89,20 @@ mounted() {
 },
     methods: {
       oneMore(){
-        this.getRandomPic();
+        if (this.randomMode) {
+          this.getRandomPic();
+        }
       },
       getRandomPic() {
         let keys = Object.keys(this.res);
-        let randomKey = keys[Math.floor(Math.random() * keys.length)];
-        let temp_ = this.res[randomKey];
-        temp_['name'] = randomKey;
-        this.randomData = temp_;
+        if (this.randomIndex >= keys.length) {
+          this.randomIndex = 0;
+        }
+        for (let[k,v] of Object.entries(this.res)){
+          v['name'] = k;
+          this.randomData.push(v);
+        }
+        this.randomIndex++;
       },
       changeMode() {
         this.randomMode = !this.randomMode;
