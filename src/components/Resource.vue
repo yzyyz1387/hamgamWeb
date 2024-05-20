@@ -1,179 +1,187 @@
 <template>
-<div>
-  <div class="btn change-mode-btn"  @click="changeMode" >
-    <i class="el-icon-magic-stick" aria-hidden="true" title="随机模式"></i>&nbsp;{{ !randomMode? "随机模式" : "普通模式" }}
-  </div>
-  <div class="btn one-more-btn" v-if="randomMode || Object.keys(res).length==1" @click="oneMore">
-     <i class="el-icon-thumb" aria-hidden="true" title="再来一张"></i>&nbsp;再来一张
-  </div>
-  <div class="outer" v-if="!randomMode">
-    <div class="masonry" v-if="Object.keys(res).length>0">
-      <div class="item" v-for="(src, name) in res" :key="name">
-        <img :src="config.cdn + src.url">
-        <h2>{{ name }}</h2>
-        <p>
+  <div>
+    <div class="btn change-mode-btn" @click="changeMode">
+      <i class="el-icon-magic-stick" aria-hidden="true" title="随机模式"></i>&nbsp;{{
+        !randomMode ? "随机模式" : "普通模式"
+      }}
+    </div>
+    <div class="btn one-more-btn" v-if="randomMode || Object.keys(res).length===1" @click="oneMore">
+      <i class="el-icon-thumb" aria-hidden="true" title="再来一张"></i>&nbsp;再来一张
+    </div>
+    <div class="outer" v-if="!randomMode">
+      <div class="masonry" v-if="Object.keys(res).length>0">
+        <div class="item" v-for="(src, name) in res" :key="name">
+          <img :src="config.cdn + src.url" @error="setDefaultImage" alt="加载失败...">
+          <h2>{{ name }}</h2>
+          <p>
             {{ src.dec }}
-        </p>
-        <p class="contributor">
-          <span>贡献者: {{ src.contributor }}</span>
-        
-        </p>
-        <div class="share">
-          <i class="el-icon-share" aria-hidden="true" @click="SharePic(src.url)" v-if="!tempPicUrl"  title="分享图片"></i>
-          <a href="/"  v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+          </p>
+          <p class="contributor">
+            <span>贡献者: {{ src.contributor }}</span>
 
+          </p>
+          <div class="share">
+            <i class="el-icon-share" aria-hidden="true" @click="SharePic(src.url)" v-if="!tempPicUrl"
+               title="分享图片"></i>
+            <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+
+          </div>
+        </div>
+      </div>
+      <div class="masonry" v-else>
+        <div class="item load">
+          <img src="../assets/loading.gif" alt="">
+          <h2>加载中...</h2>
         </div>
       </div>
     </div>
-    <div class="masonry" v-else>
-        <div class="item load" >
-        <img src="../assets/loading.gif" alt="">
-        <h2>加载中...</h2>
-      </div>
-    </div>
-  </div>
-  <div class="outer" v-else>
+    <div class="outer" v-else>
       <div class="show-one">
         <div class="item item-one">
-                  <img :src="config.cdn + randomData[randomIndex].url">
-        <h2>{{ randomData[randomIndex].name }}</h2>
-        <p>
+          <img :src="config.cdn + randomData[randomIndex].url" alt="">
+          <h2>{{ randomData[randomIndex].name }}</h2>
+          <p>
             {{ randomData[randomIndex].dec }}
-        </p>
-        <p class="contributor">
-          <span>贡献者: {{ randomData[randomIndex].contributor }}</span>
-        
-        </p>
-        <div class="share">
-          <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData[randomIndex].url)" v-if="!tempPicUrl"  title="分享图片"></i>
-          <a href="/"  v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+          </p>
+          <p class="contributor">
+            <span>贡献者: {{ randomData[randomIndex].contributor }}</span>
 
-        </div>
+          </p>
+          <div class="share">
+            <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData[randomIndex].url)"
+               v-if="!tempPicUrl" title="分享图片"></i>
+            <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+
+          </div>
         </div>
       </div>
+    </div>
   </div>
-</div>
 </template>
 
 <script>
 import config from '../config.js';
-
+import defaultImage from '@/assets/crying_img.png';
 export default {
-    name: "Resource",
-    props: {
-      picUrl: {
-        type: String,
-        default: ""
-      }
-    },
-    data() {
-        return {
-          config: config,
-            res: {
-            },
-            tempPicUrl:"",
-            randomMode:false,
-            randomData:[],
-            randomIndex:-1,
-
-        }
-    },
-    created(){
-      this.updateData();
-      window.ViewImage && ViewImage.init('.item img');
-    },
-mounted() {
-  this.updateData().then(() => {
-    this.updateRes();
-  });
-},
-    methods: {
-      oneMore(){
-        if (this.randomMode) {
-          this.getRandomPic();
-        }
-      },
-      getRandomPic() {
-        let keys = Object.keys(this.res);
-        if (this.randomIndex >= keys.length) {
-          this.randomIndex = 0;
-        }
-        for (let[k,v] of Object.entries(this.res)){
-          v['name'] = k;
-          this.randomData.push(v);
-        }
-        this.randomIndex++;
-      },
-      changeMode() {
-        this.randomMode = !this.randomMode;
-        if (this.randomMode) {
-          this.getRandomPic();
-        }
-      },
-      SharePic(url) {
-        const input = document.createElement('input');
-        document.body.appendChild(input);
-        let location = window.location.href.split('#')[0]
-        input.setAttribute('value', `${location}#/${url}`);
-        input.select();
-        if (document.execCommand('copy')) {
-          document.execCommand('copy');
-          this.$message({
-            message: '图片链接已复制到剪贴板',
-            type: 'success',
-            duration: 1500
-          });
-        }
-        document.body.removeChild(input);
-      },
-    updateRes() {
-    const picUrl = this.$route.params.picUrl;
-    if (picUrl) {
-      if (picUrl==='random'){
-        this.randomMode = true;
-        this.getRandomPic();
-        return;
-      }
-      for (let key in this.res) {
-        if (this.res[key].url==picUrl ) {
-          this.tempPicUrl = picUrl;
-          this.res = {
-            [key]: this.res[key]
-          }
-          break;
-        }
-      }
+  name: "Resource",
+  props: {
+    picUrl: {
+      type: String,
+      default: ""
     }
   },
-      async updateData() {
-        let url = config.res;
-        try {
-          let res = await axios.get(url);
-          if (res.data["url"]) {
-            let dataUrl = res.data["url"];
-            let res2 = await axios.get(dataUrl);
-            let data = res2.data;
-            let keys = Object.keys(data);
-            let newData = {};
-            keys.sort(() => Math.random() - 0.5);
-            keys.forEach(key => {
-              newData[key] = data[key];
-            });
-            this.res = newData;
+  data() {
+    return {
+      config: config,
+      res: {},
+      tempPicUrl: "",
+      randomMode: false,
+      randomData: [],
+      randomIndex: -1,
+
+    }
+  },
+  created() {
+    this.updateData();
+    window.ViewImage && ViewImage.init('.item img');
+  },
+  mounted() {
+    this.updateData().then(() => {
+      this.updateRes();
+    });
+  },
+  methods: {
+    setDefaultImage(e) {
+      e.target.src = defaultImage;
+    },
+    oneMore() {
+      if (this.randomMode) {
+        this.getRandomPic();
+      }
+    },
+    getRandomPic() {
+      let keys = Object.keys(this.res);
+      if (this.randomIndex >= keys.length) {
+        this.randomIndex = 0;
+      }
+      for (let [k, v] of Object.entries(this.res)) {
+        v['name'] = k;
+        this.randomData.push(v);
+      }
+      this.randomIndex++;
+    },
+    changeMode() {
+      this.randomMode = !this.randomMode;
+      if (this.randomMode) {
+        this.getRandomPic();
+      }
+    },
+    SharePic(url) {
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      let location = window.location.href.split('#')[0]
+      input.setAttribute('value', `${location}#/${url}`);
+      input.select();
+      if (document.execCommand('copy')) {
+        document.execCommand('copy');
+        this.$message({
+          message: '图片链接已复制到剪贴板',
+          type: 'success',
+          duration: 1500
+        });
+      }
+      document.body.removeChild(input);
+    },
+    updateRes() {
+      const picUrl = this.$route.params.picUrl;
+      if (picUrl) {
+        if (picUrl === 'random') {
+          this.randomMode = true;
+          this.getRandomPic();
+          return;
+        }
+        for (let key in this.res) {
+          if (this.res[key].url === picUrl) {
+            this.tempPicUrl = picUrl;
+            this.res = {
+              [key]: this.res[key]
+            }
+            break;
           }
-        } catch (error) {
-          console.log(error);
         }
       }
-}}
+    },
+    async updateData() {
+      let url = config.res;
+      try {
+        let res = await axios.get(url);
+        if (res.data["url"]) {
+          let dataUrl = res.data["url"];
+          let res2 = await axios.get(dataUrl);
+          let data = res2.data;
+          let keys = Object.keys(data);
+          let newData = {};
+          keys.sort(() => Math.random() - 0.5);
+          keys.forEach(key => {
+            newData[key] = data[key];
+          });
+          this.res = newData;
+        }
+      } catch (error) {
+        console.log(error);
+      }
+    }
+  }
+}
 </script>
 
 <style scoped>
-a{
+a {
   text-decoration: none;
   color: #3898fc;
 
 }
+
 .masonry {
   width: 1440px;
   margin: 20px auto;
@@ -182,7 +190,8 @@ a{
   position: relative;
 
 }
-.btn{
+
+.btn {
   z-index: 999;
   height: 45px;
   cursor: pointer;
@@ -196,6 +205,7 @@ a{
   padding: 0 10px;
   color: #fff;
 }
+
 .change-mode-btn,
 .one-more-btn {
   border-radius: 15px;
@@ -210,11 +220,13 @@ a{
 .one-more-btn {
   bottom: 80px;
 }
-.btn i{
+
+.btn i {
   font-size: 1.5em;
   font-weight: 900;
   color: #fff;
 }
+
 .item {
   width: 100%;
   break-inside: avoid;
@@ -223,9 +235,10 @@ a{
   border: 1px solid #f0f0f0;
   background-color: #fff;
   position: relative;
-  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1); 
+  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1);
 }
-.item:hover{
+
+.item:hover {
   box-shadow: 5px 8px 7px 3px rgb(0 0 0 / 36%);
   transform: translateY(-5px);
 }
@@ -243,32 +256,37 @@ a{
   color: #555;
   margin: 0 15px 15px 15px;
 }
-.show-one{
+
+.show-one {
   display: flex;
   justify-content: center;
 
 }
-.item-one{
+
+.item-one {
   width: 50%;
   margin: 20px;
   border: 1px solid #f0f0f0;
   background-color: #fff;
   position: relative;
-  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1); 
+  box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1);
 
 }
+
 .contributor {
   color: #555;
   margin: 0 15px 15px 15px;
   font-size: 0.8em;
- 
+
 }
-.contributor span{
-   background-color: #cecece78;
-    padding: 2px 5px;
-    border-radius: 15px;
+
+.contributor span {
+  background-color: #cecece78;
+  padding: 2px 5px;
+  border-radius: 15px;
 }
-.share{
+
+.share {
   height: 40px;
   width: 40px;
   position: absolute;
@@ -281,10 +299,12 @@ a{
   cursor: pointer;
   user-select: none;
 }
-.share:hover{
+
+.share:hover {
   color: #3898fc;
 
 }
+
 @media screen and (min-width: 1024px) and (max-width: 1439.98px) {
   .masonry {
     width: 96vw;
@@ -292,35 +312,43 @@ a{
     column-gap: 20px;
   }
 }
+
 @media screen and (min-width: 768px) and (max-width: 1023.98px) {
   .masonry {
     width: 96vw;
     columns: 2;
     column-gap: 20px;
   }
-    .item-one {
+
+  .item-one {
     width: 96vw;
   }
+
   .change-mode-btn {
     bottom: 80px;
-    }
-    .one-more-btn {
-      bottom: 140px;
-    }
+  }
+
+  .one-more-btn {
+    bottom: 140px;
+  }
 }
+
 @media screen and (max-width: 767.98px) {
   .masonry {
     width: 96vw;
     columns: 1;
   }
+
   .item-one {
     width: 96vw;
   }
+
   .change-mode-btn {
     bottom: 80px;
-    }
-    .one-more-btn {
-      bottom: 140px;
-    }
+  }
+
+  .one-more-btn {
+    bottom: 140px;
+  }
 }
 </style>
