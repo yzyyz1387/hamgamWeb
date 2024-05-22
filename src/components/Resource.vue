@@ -1,5 +1,10 @@
 <template>
   <div>
+    <div class="sub-title">
+      <span>目前收录数：<span class="sub-num">{{ Object.keys(originalImgs).length }}</span></span>
+      <span>贡献者数：<span class="sub-num">{{getContributorNum(originalImgs) }}</span></span>
+    </div>
+
     <div class="btn change-mode-btn" @click="changeMode">
       <i class="el-icon-magic-stick" aria-hidden="true" title="随机模式"></i>&nbsp;{{
         !randomMode ? "随机模式" : "普通模式"
@@ -9,6 +14,9 @@
       <i class="el-icon-thumb" aria-hidden="true" title="再来一张"></i>&nbsp;再来一张
     </div>
     <div class="outer" v-if="!randomMode">
+      <div class="search">
+        <input type="text" v-model="searchKey" placeholder="搜索标题、描述、贡献者" class="search-input">
+      </div>
       <div class="masonry" v-if="Object.keys(res).length>0">
         <div class="item" v-for="(src, name) in res" :key="name">
           <img :src="config.cdn + src.url" @error="setDefaultImage" alt="加载失败...">
@@ -78,11 +86,22 @@ export default {
       randomMode: false,
       randomData: [],
       randomIndex: -1,
+      searchKey: '',
+      originalImgs:{}
 
     }
   },
+  watch: {
+    searchKey: {
+      handler: function () {
+        this.applySearchFilter();
+      },
+    },
+  },
   created() {
-    this.updateData();
+    this.updateData().then(() => {
+      this.originalImgs = {...this.res};
+    });
     window.ViewImage && ViewImage.init('.item img');
   },
   mounted() {
@@ -91,6 +110,43 @@ export default {
     });
   },
   methods: {
+    applySearchFilter() {
+      let searchKey = this.searchKey.toLowerCase();
+      let isChinese = /[\u4e00-\u9fa5]/.test(searchKey);
+      if (isChinese) {
+        searchKey = searchKey.split('');
+      } else {
+        searchKey = [searchKey];
+      }
+      let res = this.originalImgs;
+      let filteredImgs = {};
+      if (searchKey[0] === '') {
+        this.res = {...res};
+        return;
+      }
+      for (let key in res) {
+        let img = res[key];
+        let flag = false;
+        for (let i = 0; i < searchKey.length; i++) {
+          let imgDec = typeof img.dec === 'string' ? img.dec.toLowerCase() : String(img.dec).toLowerCase();
+          if (key.toLowerCase().includes(searchKey[i]) || imgDec.includes(searchKey[i]) || img.contributor.toLowerCase().includes(searchKey[i])) {
+            flag = true;
+            break;
+          }
+        }
+        if (flag) {
+          filteredImgs[key] = img;
+        }
+      }
+      this.res = filteredImgs;
+    },
+    getContributorNum(res) {
+      let contributor = new Set();
+      for (let key in res) {
+        contributor.add(res[key].contributor);
+      }
+      return contributor.size;
+    },
     setDefaultImage(e) {
       e.target.src = defaultImage;
     },
@@ -100,11 +156,12 @@ export default {
       }
     },
     getRandomPic(picName) {
-      let keys = Object.keys(this.res);
+      let ores = this.originalImgs
+      let keys = Object.keys(ores);
       if (this.randomIndex >= keys.length) {
         this.randomIndex = 0;
       }
-      for (let [k, v] of Object.entries(this.res)) {
+      for (let [k, v] of Object.entries(ores)) {
         v['name'] = k;
         this.randomData.push(v);
       }
@@ -201,6 +258,35 @@ a {
   text-decoration: none;
   color: #3898fc;
 
+}
+.sub-title{
+  text-align: left;
+  font-size: 1.5em;
+  margin:20px 20px 0;
+  font-weight: 900;
+
+}
+.sub-title > span{
+  margin-right: 20px;
+}
+.sub-num{
+  color: #3390dc;
+}
+
+
+.search {
+  margin: 30px 0 0px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.search-input {
+  width: 50%;
+  height: 30px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  padding: 5px;
+  font-size: 16px;
 }
 
 .masonry {
