@@ -60,5 +60,9 @@ export default {
   margin-right: 5px;
   vertical-align: middle;
 }
-
+@media (max-width:1000px) {
+  .icp{
+    font-size: .8em;
+  }
+}
 </style>
