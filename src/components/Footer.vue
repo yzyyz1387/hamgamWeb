@@ -60,4 +60,5 @@ export default {
   margin-right: 5px;
   vertical-align: middle;
 }
+
 </style>

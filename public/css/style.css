@@ -56,3 +56,8 @@ html{
 .copyright p{
     text-align: center;
 }
+@media (max-width:1000px) {
+    .copyright{
+        font-size: .8em;
+    }
+}
