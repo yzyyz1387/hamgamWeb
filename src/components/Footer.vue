@@ -45,7 +45,6 @@ export default {
   font-weight: bold;
   color: #0000007b;
   margin-top: 20px;
-  margin-left: 20px;
 }
 .icp a {
   color: #0000007b;
