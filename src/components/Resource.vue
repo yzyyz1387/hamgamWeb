@@ -35,7 +35,7 @@
               <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
             </div>
-            <div class="like" :class="{ 'liked': isLiked(src.url)  }"  @click="like(src.url)"  :title="isLiked(src.url) ? '点赞':'取消点赞'">
+            <div class="like" :class="{ 'liked': isLiked(src.url)  }"  @click="like(src.url)"  :title="isLiked(src.url) ? '取消点赞':'点赞'">
               <div class="likeCt">
                 <img :src="isLiked(src.url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
                 <span class="likeNum" v-if="!likesLoaded"></span>
@@ -72,7 +72,7 @@
               <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
             </div>
-            <div class="like" :class="{ 'liked': isLiked(randomData[randomIndex].url)  }"  @click="like(randomData[randomIndex].url)"  :title="isLiked(randomData[randomIndex].url) ? '点赞':'取消点赞'">
+            <div class="like" :class="{ 'liked': isLiked(randomData[randomIndex].url)  }"  @click="like(randomData[randomIndex].url)"  :title="isLiked(randomData[randomIndex].url) ? '取消点赞':'点赞'">
               <div class="likeCt">
                 <img :src="isLiked(randomData[randomIndex].url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
                 <span class="likeNum" v-if="!likesLoaded"></span>
