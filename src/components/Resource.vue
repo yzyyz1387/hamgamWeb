@@ -2,7 +2,7 @@
   <div>
     <div class="sub-title">
       <span>目前收录数：<span class="sub-num">{{ Object.keys(originalImgs).length }}</span></span>
-      <span>贡献者数：<span class="sub-num">{{getContributorNum(originalImgs) }}</span></span>
+      <span>贡献者数：<span class="sub-num">{{ getContributorNum(originalImgs) }}</span></span>
     </div>
 
     <div class="btn change-mode-btn" @click="changeMode">
@@ -28,11 +28,21 @@
             <span>贡献者: {{ src.contributor }}</span>
 
           </p>
-          <div class="share">
-            <i class="el-icon-share" aria-hidden="true" @click="SharePic(src.url)" v-if="!tempPicUrl"
-               title="分享图片"></i>
-            <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+          <div class="social">
+            <div class="share">
+              <i class="el-icon-share" aria-hidden="true" @click="SharePic(src.url)" v-if="!tempPicUrl"
+                 title="分享图片"></i>
+              <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
+            </div>
+            <div class="like" :class="{ 'liked': isLiked(src.url)  }"  @click="like(src.url)"  :title="isLiked(src.url) ? '点赞':'取消点赞'">
+              <div class="likeCt">
+                <img :src="isLiked(src.url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
+                <span class="likeNum" v-if="!likesLoaded"></span>
+                <span class="likeNum" v-else-if="typeof likes[src.url] === 'undefined'">0</span>
+                <span class="likeNum" v-else>{{ likes[src.url] }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -55,11 +65,21 @@
             <span>贡献者: {{ randomData[randomIndex].contributor }}</span>
 
           </p>
-          <div class="share">
-            <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData[randomIndex].url)"
-               v-if="!tempPicUrl" title="分享图片"></i>
-            <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
+          <div class="social">
+            <div class="share">
+              <i class="el-icon-share" aria-hidden="true" @click="SharePic(randomData[randomIndex].url)"
+                 v-if="!tempPicUrl" title="分享图片"></i>
+              <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
+            </div>
+            <div class="like" :class="{ 'liked': isLiked(randomData[randomIndex].url)  }"  @click="like(randomData[randomIndex].url)"  :title="isLiked(randomData[randomIndex].url) ? '点赞':'取消点赞'">
+              <div class="likeCt">
+                <img :src="isLiked(randomData[randomIndex].url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
+                <span class="likeNum" v-if="!likesLoaded"></span>
+                <span class="likeNum" v-else-if="typeof likes[randomData[randomIndex].url] === 'undefined'">0</span>
+                <span class="likeNum" v-else>{{ likes[randomData[randomIndex].url] }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -70,6 +90,15 @@
 <script>
 import config from '../config.js';
 import defaultImage from '@/assets/crying_img.png';
+import AV from 'leancloud-storage';
+import CryptoJS from 'crypto-js';
+
+AV.init({
+  appId: config.appid,
+  appKey: config.appkey,
+  serverURL: config.serverUrl
+});
+
 export default {
   name: "Resource",
   props: {
@@ -87,7 +116,10 @@ export default {
       randomData: [],
       randomIndex: -1,
       searchKey: '',
-      originalImgs:{}
+      originalImgs: {},
+      likes: {},
+      likesLoaded: false,
+      likedImages: [],
 
     }
   },
@@ -97,12 +129,34 @@ export default {
         this.applySearchFilter();
       },
     },
+    originalImgs: {
+      handler: function (newVal, oldVal) {
+        this.getLikesForImages(newVal);
+      },
+      deep: true
+    },
   },
-  created() {
-    this.updateData().then(() => {
-      this.originalImgs = {...this.res};
-    });
-    window.ViewImage && ViewImage.init('.item img');
+  async created() {
+    await this.updateData();
+    this.originalImgs = {...this.res};
+    // 预设 likes 对象的所有属性
+    for (let key in this.originalImgs) {
+      this.$set(this.likes, this.originalImgs[key].url, 0);
+    }
+    await this.getLikesForImages(this.originalImgs);
+    let likedImages = localStorage.getItem('likedImages');
+    if (likedImages) {
+      try {
+        likedImages = JSON.parse(CryptoJS.AES.decrypt(likedImages, config.secretKey).toString(CryptoJS.enc.Utf8));
+      } catch (error) {
+        console.error('Failed to parse likedImages:', error);
+        likedImages = [];
+      }
+    } else {
+      likedImages = [];
+    }
+    this.likedImages = likedImages;
+    window.ViewImage && ViewImage.init('.item > img');
   },
   mounted() {
     this.updateData().then(() => {
@@ -110,6 +164,84 @@ export default {
     });
   },
   methods: {
+    getLikedImages() {
+      return this.likedImages;
+    },
+
+    isLiked(imgUrl) {
+      return this.likedImages.includes(imgUrl);
+    },
+
+    async like(imgUrl) {
+      const query = new AV.Query('Likes');
+      query.equalTo('imgUrl', imgUrl);
+      const result = await query.first();
+      if (this.isLiked(imgUrl)) {
+        // 如果已经点过赞了，那么取消赞
+        const index = this.likedImages.indexOf(imgUrl);
+        if (index > -1) {
+          this.likedImages.splice(index, 1);
+        }
+        try {
+          if (result) {
+            result.increment('likes', -1);
+            await result.save();
+            // 在网络请求成功后更新 likes 对象
+            if (this.likes[imgUrl] > 0) {
+              this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
+            }
+          }
+          console.log("取消赞", imgUrl);
+        } catch (error) {
+          // 如果网络请求失败，回滚本地的改变
+          if (this.likes[imgUrl] < this.likedImages.length) {
+            this.$set(this.likes, imgUrl, this.likes[imgUrl] + 1);
+          }
+          console.error('Failed to unlike:', error);
+        }
+      } else {
+        // 如果没有点过赞，那么添加赞
+        try {
+          if (result) {
+            result.increment('likes');
+            await result.save();
+          } else {
+            const Likes = AV.Object.extend('Likes');
+            const like = new Likes();
+            like.set('imgUrl', imgUrl);
+            like.set('likes', 1);
+            await like.save();
+          }
+          if (!this.likedImages.includes(imgUrl)) {
+            this.likedImages.push(imgUrl);
+          }
+          // 在网络请求成功后更新 likes 对象
+          this.$set(this.likes, imgUrl, (this.likes[imgUrl] || 0) + 1);
+        } catch (error) {
+          // 如果网络请求失败，回滚本地的改变
+          if (this.likes[imgUrl] > 0) {
+            this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
+          }
+          console.error('Failed to like:', error);
+        }
+      }
+      localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
+    },
+    async getLikesForImages(images) {
+      for (let imgName in images) {
+        const {url} = images[imgName];
+        let likes = await this.getLikes(url);
+        this.likes[url] = likes;
+      }
+      this.likesLoaded = true;
+    },
+    async getLikes(imgUrl) {
+      const query = new AV.Query('Likes');
+      query.equalTo('imgUrl', imgUrl);
+      const result = await query.first();
+
+      return result ? result['attributes']['likes'] : 0;
+    },
     applySearchFilter() {
       let searchKey = this.searchKey.toLowerCase();
       let isChinese = /[\u4e00-\u9fa5]/.test(searchKey);
@@ -259,17 +391,20 @@ a {
   color: #3898fc;
 
 }
-.sub-title{
+
+.sub-title {
   text-align: left;
   font-size: 1.5em;
-  margin:20px 20px 0;
+  margin: 20px 20px 0;
   font-weight: 900;
 
 }
-.sub-title > span{
+
+.sub-title > span {
   margin-right: 20px;
 }
-.sub-num{
+
+.sub-num {
   color: #3390dc;
 }
 
@@ -280,6 +415,7 @@ a {
   justify-content: center;
   align-items: center;
 }
+
 .search-input {
   width: 50%;
   height: 30px;
@@ -359,7 +495,8 @@ a {
   margin: 0 15px;
 }
 
-.item P {
+.item p {
+  width: 80%;
   color: #555;
   margin: 0 15px 15px 15px;
 }
@@ -392,10 +529,36 @@ a {
   padding: 2px 5px;
   border-radius: 15px;
 }
-
-.share {
-  height: 40px;
+.social{
   width: 40px;
+  height: 120px;
+  position: absolute;
+  right: 10px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.share {
+  color: #3898fc70;
+  font-size: 1.5em;
+  border-radius: 50%;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  justify-content: center;
+}
+
+.share:hover {
+  color: #3898fc;
+
+}
+
+.like {
+  height: 20px;
+  width: 20px;
   position: absolute;
   right: 10px;
   bottom: 10px;
@@ -405,11 +568,30 @@ a {
   align-items: center;
   cursor: pointer;
   user-select: none;
+
 }
 
-.share:hover {
-  color: #3898fc;
+.like:hover {
+  color: #ef2f6a;
+}
 
+.likeCt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.likeNum {
+  font-size: 0.8em;
+}
+
+.liked {
+  color: #ef2f6a;
+}
+
+
+.liked:hover {
+  color: #3898fc;
 }
 
 @media screen and (min-width: 1024px) and (max-width: 1439.98px) {

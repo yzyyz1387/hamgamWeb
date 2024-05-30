@@ -46,18 +46,3 @@ html{
     margin-top: 150px;
     margin-bottom: 20px;
 }
-.copyright{
-    font-size: 15px;
-    font-weight: bold;
-    color: #0000007b;
-    margin-top: 20px;
-
-}
-.copyright p{
-    text-align: center;
-}
-@media (max-width:1000px) {
-    .copyright{
-        font-size: .8em;
-    }
-}

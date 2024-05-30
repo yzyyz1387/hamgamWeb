@@ -32,10 +32,11 @@ export default {
           Copyright © BD8CWG  {{ copyyear }} | <a href="https://github.com/yzyyz1387/hamgam" target="_blank">Github</a>
         </p>
       </div>
-    </div>
-    <div class="container">
+      <div class="flag" title="愿世界和平，远离战火">
 
+      </div>
     </div>
+
   </footer>
 </template>
 
@@ -60,9 +61,30 @@ export default {
   margin-right: 5px;
   vertical-align: middle;
 }
-@media (max-width:1000px) {
-  .icp{
-    font-size: .8em;
-  }
+.flag {
+  transition: all 0.3s ease;
+  cursor: pointer;
+  height: 5px;
+  background: linear-gradient(to right, red 25%, black 25%, black 50%, white 50%, white 75%, green 75%);
 }
+.flag:hover {
+  height: 20px;
+}
+.copyright{
+  font-size: 15px;
+  font-weight: bold;
+  color: #0000007b;
+  margin-top: 20px;
+  margin-bottom: 10px;
+
+}
+.copyright p{
+  text-align: center;
+}
+  @media (max-width:1000px) {
+    .copyright{
+      font-size: .8em;
+    }
+  }
+
 </style>
