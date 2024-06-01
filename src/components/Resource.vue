@@ -35,7 +35,7 @@
               <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
             </div>
-            <div class="like" :class="{ 'liked': isLiked(src.url)  }"  @click="like(src.url)"  :title="isLiked(src.url) ? '取消点赞':'点赞'">
+            <div class="like" :class="{ 'liked': isLiked(src.url)  }"  @click="like($event,src.url)"  :title="isLiked(src.url) ? '取消点赞':'点赞'">
               <div class="likeCt">
                 <img :src="isLiked(src.url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
                 <span class="likeNum" v-if="!likesLoaded"></span>
@@ -72,7 +72,7 @@
               <a href="/" v-else><i class="el-icon-menu" aria-hidden="true" title="返回主页"></i></a>
 
             </div>
-            <div class="like" :class="{ 'liked': isLiked(randomData[randomIndex].url)  }"  @click="like(randomData[randomIndex].url)"  :title="isLiked(randomData[randomIndex].url) ? '取消点赞':'点赞'">
+            <div class="like" :class="{ 'liked': isLiked(randomData[randomIndex].url)  }"  @click="like($event,randomData[randomIndex].url)"  :title="isLiked(randomData[randomIndex].url) ? '取消点赞':'点赞'">
               <div class="likeCt">
                 <img :src="isLiked(randomData[randomIndex].url) ? require('@/assets/liked.png') : require('@/assets/like.png')" alt="">
                 <span class="likeNum" v-if="!likesLoaded"></span>
@@ -164,6 +164,46 @@ export default {
     });
   },
   methods: {
+    createParticleAndAnimation(event) {
+      const likeButton = event.target;
+      likeButton.classList.add('scale-animation');
+      // 移除 scale-animation
+      likeButton.addEventListener('animationend', () => {
+        likeButton.classList.remove('scale-animation');
+      });
+
+      // 创建粒子
+      for (let i = 0; i < 5; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'particle';
+        particle.style.width = `${Math.random() * 10 + 5}px`;
+        particle.style.height = particle.style.width;
+
+        // 分配随机位置
+        const offsetX = (Math.random() - 0.5) * 20;
+        const offsetY = (Math.random() - 0.5) * 20;
+        particle.style.left = `${event.clientX - likeButton.getBoundingClientRect().left + offsetX}px`;
+        particle.style.top = `${event.clientY - likeButton.getBoundingClientRect().top + offsetY}px`;
+
+        // 分配随机方向
+        const angle = Math.random() * 2 * Math.PI;
+        const distance = 50;
+        const translateX = Math.cos(angle) * distance;
+        const translateY = Math.sin(angle) * distance;
+        particle.style.setProperty('--translateX', `${translateX}px`);
+        particle.style.setProperty('--translateY', `${translateY}px`);
+        particle.style.animation = `fade-and-scale 0.5s ease-in-out forwards, move 0.5s ease-in-out forwards`;
+
+        likeButton.parentElement.appendChild(particle);
+
+        // 移除粒子
+        particle.addEventListener('animationend', () => {
+          if (particle.parentNode) {
+            particle.parentNode.removeChild(particle);
+          }
+        });
+      }
+    },
     getLikedImages() {
       return this.likedImages;
     },
@@ -171,67 +211,79 @@ export default {
     isLiked(imgUrl) {
       return this.likedImages.includes(imgUrl);
     },
-
-    async like(imgUrl) {
-      const query = new AV.Query('Likes');
-      query.equalTo('imgUrl', imgUrl);
-      const result = await query.first();
-      if (this.isLiked(imgUrl)) {
-        // 如果已经点过赞了，那么取消赞
-        const index = this.likedImages.indexOf(imgUrl);
-        if (index > -1) {
-          this.likedImages.splice(index, 1);
-        }
-        try {
-          if (result) {
-            result.increment('likes', -1);
-            await result.save();
+    //防抖
+    debounce(func, wait = 300) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          func.apply(this, args);
+        }, wait);
+      };
+    },
+    async like(event,imgUrl) {
+      this.debounce(async () => {
+        const query = new AV.Query('Likes');
+        query.equalTo('imgUrl', imgUrl);
+        const result = await query.first();
+        if (this.isLiked(imgUrl)) {
+          // 如果已经点过赞了，那么取消赞
+          const index = this.likedImages.indexOf(imgUrl);
+          if (index > -1) {
+            this.likedImages.splice(index, 1);
+          }
+          try {
+            if (result) {
+              result.increment('likes', -1);
+              await result.save();
+              // 在网络请求成功后更新 likes 对象
+              if (this.likes[imgUrl] > 0) {
+                this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
+              }
+            }
+            console.log("取消赞", imgUrl);
+          } catch (error) {
+            // 如果网络请求失败，回滚本地的改变
+            if (this.likes[imgUrl] < this.likedImages.length) {
+              this.$set(this.likes, imgUrl, this.likes[imgUrl] + 1);
+            }
+            console.error('Failed to unlike:', error);
+          }
+        } else {
+          // 如果没有点过赞，那么添加赞
+            // 获取点赞按钮元素
+          this.createParticleAndAnimation(event);
+          try {
+            if (result) {
+              result.increment('likes');
+              await result.save();
+            } else {
+              const Likes = AV.Object.extend('Likes');
+              const like = new Likes();
+              like.set('imgUrl', imgUrl);
+              like.set('likes', 1);
+              await like.save();
+            }
+            if (!this.likedImages.includes(imgUrl)) {
+              this.likedImages.push(imgUrl);
+            }
             // 在网络请求成功后更新 likes 对象
+            this.$set(this.likes, imgUrl, (this.likes[imgUrl] || 0) + 1);
+          } catch (error) {
+            // 如果网络请求失败，回滚本地的改变
             if (this.likes[imgUrl] > 0) {
               this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
             }
+            console.error('Failed to like:', error);
           }
-          console.log("取消赞", imgUrl);
-        } catch (error) {
-          // 如果网络请求失败，回滚本地的改变
-          if (this.likes[imgUrl] < this.likedImages.length) {
-            this.$set(this.likes, imgUrl, this.likes[imgUrl] + 1);
-          }
-          console.error('Failed to unlike:', error);
         }
-      } else {
-        // 如果没有点过赞，那么添加赞
-        try {
-          if (result) {
-            result.increment('likes');
-            await result.save();
-          } else {
-            const Likes = AV.Object.extend('Likes');
-            const like = new Likes();
-            like.set('imgUrl', imgUrl);
-            like.set('likes', 1);
-            await like.save();
-          }
-          if (!this.likedImages.includes(imgUrl)) {
-            this.likedImages.push(imgUrl);
-          }
-          // 在网络请求成功后更新 likes 对象
-          this.$set(this.likes, imgUrl, (this.likes[imgUrl] || 0) + 1);
-        } catch (error) {
-          // 如果网络请求失败，回滚本地的改变
-          if (this.likes[imgUrl] > 0) {
-            this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
-          }
-          console.error('Failed to like:', error);
-        }
-      }
-      localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
+        localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
+      })();
     },
     async getLikesForImages(images) {
       for (let imgName in images) {
         const {url} = images[imgName];
-        let likes = await this.getLikes(url);
-        this.likes[url] = likes;
+        this.likes[url] = await this.getLikes(url);
       }
       this.likesLoaded = true;
     },
@@ -256,9 +308,17 @@ export default {
         this.res = {...res};
         return;
       }
+      let possibleKeys = ['dec', 'contributor']; // 添加你想要检查的键
+
       for (let key in res) {
         let img = res[key];
         let flag = false;
+
+        for (let i = 0; i < possibleKeys.length; i++) {
+          if (!img.hasOwnProperty(possibleKeys[i])) {
+            img[possibleKeys[i]] = ''; // 如果键不存在，赋值为空字符串
+          }
+        }
         for (let i = 0; i < searchKey.length; i++) {
           let imgDec = typeof img.dec === 'string' ? img.dec.toLowerCase() : String(img.dec).toLowerCase();
           if (key.toLowerCase().includes(searchKey[i]) || imgDec.includes(searchKey[i]) || img.contributor.toLowerCase().includes(searchKey[i])) {
@@ -280,6 +340,7 @@ export default {
       return contributor.size;
     },
     setDefaultImage(e) {
+      //加载失败默认图片
       e.target.src = defaultImage;
     },
     oneMore() {
@@ -593,6 +654,23 @@ a {
 .liked:hover {
   color: #3898fc;
 }
+
+@keyframes scale {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.scale-animation {
+  animation: scale 0.5s ease-in-out;
+}
+
 
 @media screen and (min-width: 1024px) and (max-width: 1439.98px) {
   .masonry {

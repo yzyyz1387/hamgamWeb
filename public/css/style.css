@@ -46,3 +46,30 @@ html{
     margin-top: 150px;
     margin-bottom: 20px;
 }
+
+.particle {
+    position: absolute;
+    background-color: red;
+    border-radius: 50%;
+    animation: fade-and-scale 1s ease-in-out forwards, move 1s ease-in-out forwards;
+}
+
+@keyframes move {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translate(var(--translateX), var(--translateY));
+    }
+}
+
+@keyframes fade-and-scale {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(50px, 50px) scale(0);
+    }
+}
