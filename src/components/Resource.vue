@@ -164,6 +164,21 @@ export default {
     });
   },
   methods: {
+    async getEncryptedData(url, data) {
+      // 发送请求
+      try {
+        const response = await axios.post(url, {
+          text: data
+        });
+        if (response.data.hasOwnProperty("encrypted")) {
+          return response.data["encrypted"];
+        } else {
+          throw new Error("Response does not contain 'encrypted' key");
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    },
     createParticleAndAnimation(event) {
       const likeButton = event.target;
       likeButton.classList.add('scale-animation');
@@ -277,7 +292,9 @@ export default {
             console.error('Failed to like:', error);
           }
         }
-        localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
+        const encryptedLikedImages = await this.getEncryptedData('https://encryptgam.seeku.site/encrypt', this.likedImages);
+        // localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
+        localStorage.setItem('likedImages', encryptedLikedImages);
       })();
     },
     async getLikesForImages(images) {
