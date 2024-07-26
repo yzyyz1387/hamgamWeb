@@ -16,6 +16,11 @@
     <div class="outer" v-if="!randomMode">
       <div class="search">
         <input type="text" v-model="searchKey" placeholder="搜索标题、描述、贡献者" class="search-input">
+        <div class="btn sort-by-time" @click="resSort">
+          <span>{{
+            resSortRule === 'recent' ? '默认乱序' : '最近更新'
+            }}</span>
+        </div>
       </div>
       <div class="masonry" v-if="Object.keys(res).length>0">
         <div class="item" v-for="(src, name) in res" :key="name">
@@ -26,7 +31,7 @@
           </p>
           <p class="contributor">
             <span>贡献者: {{ src.contributor }}</span>
-
+            <span> {{ src["update"] }} </span>
           </p>
           <div class="social">
             <div class="share">
@@ -120,6 +125,7 @@ export default {
       likes: {},
       likesLoaded: false,
       likedImages: [],
+      resSortRule:'default'
 
     }
   },
@@ -392,6 +398,41 @@ export default {
         this.getRandomPic(undefined);
       }
     },
+    resSort(){
+      if(this.resSortRule === 'default'){
+        this.resSortRule = 'recent';
+        this.updateData().then(() => {
+          this.updateRes();
+          // {
+          //   "css1": {
+          //   "url": "css1.jpg",
+          //       "dec": "我是种地的，我可以告诉大家个消息，CSS将部署业余转发器，具体时间我不知道，因为我说了我是种地的，我怎么会知道",
+          //       "contributor": "BD8CWG",
+          //       "update": "2024-06-04"
+          // },
+          //   "css2": {
+          //   "url": "css2.jpg",
+          //       "dec": "我是种地的，我可以告诉大家个消息，CSS将部署业余转发器，具体时间我不知道，因为我说了我是种地的，我怎么会知道",
+          //       "contributor": "BD8CWG",
+          //       "update": "2024-06-04"
+          // },}
+        //   sort by "update"
+          let res = this.res;
+          let keys = Object.keys(res);
+          keys.sort((a,b) => {
+            return new Date(res[b].update) - new Date(res[a].update);
+          });
+          let newData = {};
+          keys.forEach(key => {
+            newData[key] = res[key];
+          });
+          this.res = newData;
+        });
+      }else{
+        this.resSortRule = 'default';
+        this.res = {...this.originalImgs};
+      }
+    },
     SharePic(url) {
       const input = document.createElement('input');
       document.body.appendChild(input);
@@ -495,14 +536,20 @@ a {
 }
 
 .search-input {
-  width: 50%;
+  width: 45%;
   height: 30px;
   border-radius: 5px;
   border: 1px solid #ccc;
   padding: 5px;
   font-size: 16px;
 }
-
+.sort-by-time{
+  width: 7%;
+  height: 30px;
+  border-radius: 5px;
+  margin-left: 10px;
+  padding: 5px;
+}
 .masonry {
   width: 1440px;
   margin: 20px auto;
@@ -525,6 +572,9 @@ a {
   transition: all 0.3s ease;
   padding: 0 10px;
   color: #fff;
+}
+.btn:hover{
+  transform: translateY(-5px);
 }
 
 .change-mode-btn,
@@ -606,6 +656,9 @@ a {
   background-color: #cecece78;
   padding: 2px 5px;
   border-radius: 15px;
+}
+.contributor span:not(:first-child){
+  margin-left: 10px;
 }
 .social{
   width: 40px;
@@ -733,6 +786,12 @@ a {
 
   .one-more-btn {
     bottom: 140px;
+  }
+  .search-input{
+    width: 30%;
+  }
+  .sort-by-time{
+    width: 10%;
   }
 }
 </style>
