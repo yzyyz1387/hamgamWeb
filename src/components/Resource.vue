@@ -791,7 +791,7 @@ a {
     width: 30%;
   }
   .sort-by-time{
-    width: 10%;
+    width: 20%;
   }
 }
 </style>
