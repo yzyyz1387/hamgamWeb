@@ -24,7 +24,7 @@
       </div>
       <div class="masonry" v-if="Object.keys(res).length>0">
         <div class="item" v-for="(src, name) in res" :key="name">
-          <img :src="config.cdn + src.url" @error="setDefaultImage" alt="加载失败...">
+          <img v-lazy="config.cdn + src.url" @error="setDefaultImage" alt="加载失败...">
           <h2>{{ name }}</h2>
           <p>
             {{ src.dec }}
@@ -61,7 +61,7 @@
     <div class="outer" v-else>
       <div class="show-one">
         <div class="item item-one">
-          <img :src="config.cdn + randomData[randomIndex].url" alt="">
+          <img v-lazy="config.cdn + randomData[randomIndex].url" alt="">
           <h2>{{ randomData[randomIndex].name }}</h2>
           <p>
             {{ randomData[randomIndex].dec }}
@@ -434,10 +434,12 @@ export default {
       }
     },
     SharePic(url) {
+      let picUrl;
       const input = document.createElement('input');
       document.body.appendChild(input);
-      let location = window.location.href.split('#')[0]
-      input.setAttribute('value', `${location}#/${url}`);
+      let location = window.location.href.split('#')[0];
+      picUrl = encodeURI(`${location}#/${url}`);
+      input.setAttribute('value', picUrl);
       input.select();
       if (document.execCommand('copy')) {
         document.execCommand('copy');
