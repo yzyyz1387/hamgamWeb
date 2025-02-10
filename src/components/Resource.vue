@@ -105,7 +105,7 @@ AV.init({
 });
 
 export default {
-  name: "Resource",
+  name: "ResourceView",
   props: {
     picUrl: {
       type: String,
@@ -136,33 +136,24 @@ export default {
       },
     },
     originalImgs: {
-      handler: function (newVal, oldVal) {
+      handler: function (newVal) {
         this.getLikesForImages(newVal);
       },
-      deep: true
     },
   },
   async created() {
     await this.updateData();
     this.originalImgs = {...this.res};
-    // 预设 likes 对象的所有属性
-    for (let key in this.originalImgs) {
-      this.$set(this.likes, this.originalImgs[key].url, 0);
-    }
-    await this.getLikesForImages(this.originalImgs);
-    let likedImages = localStorage.getItem('likedImages');
-    if (likedImages) {
-      try {
-        likedImages = JSON.parse(CryptoJS.AES.decrypt(likedImages, config.secretKey).toString(CryptoJS.enc.Utf8));
-      } catch (error) {
-        console.error('Failed to parse likedImages:', error);
-        likedImages = [];
+    
+    // 立即初始化灯箱功能
+    this.$nextTick(() => {
+      if (window.ViewImage) {
+        window.ViewImage.init('.item > img');
       }
-    } else {
-      likedImages = [];
-    }
-    this.likedImages = likedImages;
-    window.ViewImage && ViewImage.init('.item > img');
+    });
+
+    // 异步加载点赞数据
+    this.initLikesData();
   },
   mounted() {
     this.updateData().then(() => {
@@ -170,6 +161,7 @@ export default {
     });
   },
   methods: {
+    // 获取加密后的数据，用于加密点赞信息
     async getEncryptedData(url, data) {
       // 发送请求
       try {
@@ -185,6 +177,7 @@ export default {
         console.error(error);
       }
     },
+    // 创建点赞动画效果，包括缩放和粒子动画
     createParticleAndAnimation(event) {
       const likeButton = event.target;
       likeButton.classList.add('scale-animation');
@@ -242,13 +235,64 @@ export default {
         }, wait);
       };
     },
-    async like(event,imgUrl) {
+    // 从本地存储获取缓存的点赞数据，检查是否过期(24h)
+    getCachedLikes() {
+      const cachedData = localStorage.getItem('likesCount');
+      if (!cachedData) return null;
+      
+      try {
+        const { likes, expireTime } = JSON.parse(cachedData);
+        // 检查是否过期（设置24小时过期）
+        if (Date.now() > expireTime) {
+          localStorage.removeItem('likesCount');
+          return null;
+        }
+        return likes;
+      } catch (error) {
+        console.error('Failed to parse cached likes:', error);
+        return null;
+      }
+    },
+
+    // 将点赞数据缓存到本地存储，设置24小时过期时间
+    cacheLikes(likes) {
+      const cacheData = {
+        likes,
+        expireTime: Date.now() + 24 * 60 * 60 * 1000 // 24小时后过期
+      };
+      localStorage.setItem('likesCount', JSON.stringify(cacheData));
+    },
+
+    // 获取图片的点赞数，优先使用缓存，缓存不存在则从服务器获取
+    async getLikesForImages(images) {
+      // 先尝试从缓存获取
+      const cachedLikes = this.getCachedLikes();
+      if (cachedLikes) {
+        this.likes = { ...cachedLikes };
+        this.likesLoaded = true;
+        return;
+      }
+
+      // 缓存不存在或已过期，从服务器获取
+      for (let imgName in images) {
+        const { url } = images[imgName];
+        this.likes[url] = await this.getLikes(url);
+      }
+      
+      // 缓存新获取的数据
+      this.cacheLikes(this.likes);
+      this.likesLoaded = true;
+    },
+
+    // 处理点赞/取消点赞操作，同步更新服务器和本地缓存
+    async like(event, imgUrl) {
       this.debounce(async () => {
         const query = new AV.Query('Likes');
         query.equalTo('imgUrl', imgUrl);
         const result = await query.first();
+        
         if (this.isLiked(imgUrl)) {
-          // 如果已经点过赞了，那么取消赞
+          // 取消点赞
           const index = this.likedImages.indexOf(imgUrl);
           if (index > -1) {
             this.likedImages.splice(index, 1);
@@ -257,22 +301,21 @@ export default {
             if (result) {
               result.increment('likes', -1);
               await result.save();
-              // 在网络请求成功后更新 likes 对象
-              if (this.likes[imgUrl] > 0) {
-                this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
-              }
+              // 更新本地缓存
+              this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
+              this.cacheLikes(this.likes);
             }
             console.log("取消赞", imgUrl);
           } catch (error) {
             // 如果网络请求失败，回滚本地的改变
             if (this.likes[imgUrl] < this.likedImages.length) {
               this.$set(this.likes, imgUrl, this.likes[imgUrl] + 1);
+              this.cacheLikes(this.likes);
             }
             console.error('Failed to unlike:', error);
           }
         } else {
-          // 如果没有点过赞，那么添加赞
-            // 获取点赞按钮元素
+          // 点赞
           this.createParticleAndAnimation(event);
           try {
             if (result) {
@@ -288,28 +331,24 @@ export default {
             if (!this.likedImages.includes(imgUrl)) {
               this.likedImages.push(imgUrl);
             }
-            // 在网络请求成功后更新 likes 对象
+            // 更新本地缓存
             this.$set(this.likes, imgUrl, (this.likes[imgUrl] || 0) + 1);
+            this.cacheLikes(this.likes);
           } catch (error) {
             // 如果网络请求失败，回滚本地的改变
             if (this.likes[imgUrl] > 0) {
               this.$set(this.likes, imgUrl, this.likes[imgUrl] - 1);
+              this.cacheLikes(this.likes);
             }
             console.error('Failed to like:', error);
           }
         }
+        
         const encryptedLikedImages = await this.getEncryptedData('https://encryptgam.seeku.site/encrypt', this.likedImages);
-        // localStorage.setItem('likedImages', CryptoJS.AES.encrypt(JSON.stringify(this.likedImages), config.secretKey).toString());
         localStorage.setItem('likedImages', encryptedLikedImages);
       })();
     },
-    async getLikesForImages(images) {
-      for (let imgName in images) {
-        const {url} = images[imgName];
-        this.likes[url] = await this.getLikes(url);
-      }
-      this.likesLoaded = true;
-    },
+    // 从服务器获取单个图片的点赞数
     async getLikes(imgUrl) {
       const query = new AV.Query('Likes');
       query.equalTo('imgUrl', imgUrl);
@@ -317,9 +356,12 @@ export default {
 
       return result ? result['attributes']['likes'] : 0;
     },
+    // 搜索过滤功能，支持中英文搜索标题、描述和贡献者
     applySearchFilter() {
       let searchKey = this.searchKey.toLowerCase();
+      // 检测是否包含中文
       let isChinese = /[\u4e00-\u9fa5]/.test(searchKey);
+      // 中文按字符分割，英文整体匹配
       if (isChinese) {
         searchKey = searchKey.split('');
       } else {
@@ -355,6 +397,7 @@ export default {
       }
       this.res = filteredImgs;
     },
+    // 统计不重复贡献者数量
     getContributorNum(res) {
       let contributor = new Set();
       for (let key in res) {
@@ -362,6 +405,7 @@ export default {
       }
       return contributor.size;
     },
+    // 加载失败时显示默认图片
     setDefaultImage(e) {
       //加载失败默认图片
       e.target.src = defaultImage;
@@ -371,6 +415,7 @@ export default {
         this.getRandomPic(undefined);
       }
     },
+    // 随机模式下获取下一张图片
     getRandomPic(picName) {
       let ores = this.originalImgs
       let keys = Object.keys(ores);
@@ -381,7 +426,7 @@ export default {
         v['name'] = k;
         this.randomData.push(v);
       }
-      // 让picName在第一个
+      // 如果指定了图片名称，将其放在第一位显示
       if (picName) {
         let index = this.randomData.findIndex(item => item.name === picName);
         if (index !== -1) {
@@ -392,12 +437,14 @@ export default {
       }
       this.randomIndex++;
     },
+    // 切换普通/随机模式
     changeMode() {
       this.randomMode = !this.randomMode;
       if (this.randomMode) {
         this.getRandomPic(undefined);
       }
     },
+    // 按更新时间排序/恢复默认排序
     resSort(){
       if(this.resSortRule === 'default'){
         this.resSortRule = 'recent';
@@ -433,6 +480,7 @@ export default {
         this.res = {...this.originalImgs};
       }
     },
+    // 生成并复制图片分享链接
     SharePic(url) {
       let picUrl;
       const input = document.createElement('input');
@@ -451,6 +499,7 @@ export default {
       }
       document.body.removeChild(input);
     },
+    // 根据URL参数更新显示内容
     updateRes() {
       const picUrl = this.$route.params.picUrl;
       if (picUrl) {
@@ -482,6 +531,7 @@ export default {
 
       }
     },
+    // 从服务器获取并更新图片数据，随机打乱顺序
     async updateData() {
       let url = config.res;
       try {
@@ -501,6 +551,27 @@ export default {
       } catch (error) {
         console.log(error);
       }
+    },
+    // 初始化点赞相关数据，包括已点赞图片和点赞数
+    async initLikesData() {
+      // 预设 likes 对象的所有属性
+      for (let key in this.originalImgs) {
+        this.$set(this.likes, this.originalImgs[key].url, 0);
+      }
+      
+      await this.getLikesForImages(this.originalImgs);
+      let likedImages = localStorage.getItem('likedImages');
+      if (likedImages) {
+        try {
+          likedImages = JSON.parse(CryptoJS.AES.decrypt(likedImages, config.secretKey).toString(CryptoJS.enc.Utf8));
+        } catch (error) {
+          console.error('Failed to parse likedImages:', error);
+          likedImages = [];
+        }
+      } else {
+        likedImages = [];
+      }
+      this.likedImages = likedImages;
     }
   }
 }
@@ -600,7 +671,7 @@ a {
   color: #fff;
 }
 
-.item {
+.item{
   width: 100%;
   break-inside: avoid;
   margin-bottom: 30px;
@@ -609,7 +680,12 @@ a {
   background-color: #fff;
   position: relative;
   box-shadow: -2px 7px 8px 6px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
 }
+
+.item > img{
+  border-radius: 10px 10px 0 0;
+} 
 
 .item:hover {
   box-shadow: 5px 8px 7px 3px rgb(0 0 0 / 36%);

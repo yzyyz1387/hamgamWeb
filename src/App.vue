@@ -7,17 +7,13 @@
 </template>
 
 <script>
-    import Resource from './components/Resource'
     import Footer from "@/components/Footer.vue";
 
-
     export default {
-            name: 'App',
-            components:{
-                Resource,
-                Footer
-                
-            },
+        name: 'App',
+        components:{
+            Footer
+        },
     }
 </script>
 
