@@ -1,0 +1,75 @@
+html{
+    background: #e0e0e0;
+}
+*{
+    padding: 0;
+    margin: 0;
+}
+
+.hr-ss {
+    border: 0;
+    color: #d0d0d5;
+    background: linear-gradient(currentColor, currentColor) no-repeat center;
+    background-size: calc(100% - 1.5em - 6px) 1px;
+    display: flex;
+    justify-content: space-between;
+    width: 25%;
+    margin-top: 5px;
+
+}
+.web-title{
+    font-size: 30px;
+    font-weight: bold;
+    color: #000;
+    margin-top: 20px;
+    margin-left: 20px;
+
+}
+.web-title::before{
+    content: '';
+    display: block;
+    width: 1px;
+    height: 50px;
+
+}
+.web-title::after{
+    content: '';
+    display: block;
+    width: 125px;
+    height: 5px;
+    background-color: #3898fc;
+}
+
+.bottom{
+    width: 100%;
+    align-content: center;
+    margin-top: 150px;
+    margin-bottom: 20px;
+}
+
+.particle {
+    position: absolute;
+    background-color: red;
+    border-radius: 50%;
+    animation: fade-and-scale 1s ease-in-out forwards, move 1s ease-in-out forwards;
+}
+
+@keyframes move {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translate(var(--translateX), var(--translateY));
+    }
+}
+
+@keyframes fade-and-scale {
+    0% {
+        opacity: 1;
+        transform: translate(0, 0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translate(50px, 50px) scale(0);
+    }
+}
