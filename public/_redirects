@@ -1,0 +1,4 @@
+# Netlify / Vercel SPA fallback 配置
+# 所有路由都返回 index.html
+
+/*    /index.html   200
