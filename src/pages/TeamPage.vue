@@ -139,7 +139,6 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import vue3Danmaku from 'vue3-danmaku'
 import { requireSupabase, supabaseEnabled } from '@/lib/supabase'
-import { showToast } from '@/lib/toast'
 import { useDanmakuUsers } from '@/composables/useDanmakuUsers'
 import { useTeamMembers } from '@/composables/useTeamMembers'
 import { toUserProfilePath } from '@/lib/uid'
@@ -160,17 +159,35 @@ onMounted(async () => {
   await Promise.all([loadMembers(), loadStats(), loadDanmaku()])
 })
 
+function isMissingRpc(error) {
+  const message = error?.message || ''
+  const code = error?.code || ''
+  return /does not exist|Could not find the function|No function matches/i.test(message)
+    || ['42883', 'PGRST202'].includes(code)
+}
+
 async function loadStats() {
   if (!supabaseEnabled) return
   try {
     const supabase = requireSupabase()
+
+    try {
+      const { data, error } = await supabase.rpc('get_public_team_stats')
+      if (error) throw error
+      const row = Array.isArray(data) ? data[0] : data
+      if (row) {
+        userCount.value = Number(row.user_count || 0)
+        activeCount.value = Number(row.active_count || 0)
+        return
+      }
+    } catch (rpcError) {
+      if (!isMissingRpc(rpcError)) throw rpcError
+    }
+
     const [totalRes] = await Promise.all([
       supabase.from('profiles').select('id', { count: 'exact', head: true }).eq('is_active', true),
     ])
     userCount.value = totalRes.count || 0
-    // 活跃用户口径：有过投稿或评论的用户（近似）
-    // 当前简化为：有 callsign 或有 bio 的用户视为活跃
-    // 后续可优化为：统计 last_active_at 字段
     const { count: ac } = await supabase
       .from('profiles')
       .select('id', { count: 'exact', head: true })
@@ -190,8 +207,17 @@ function initial(name = '') {
 }
 
 function parsedCerts(raw) {
-  if (!raw || !Array.isArray(raw)) return []
-  return raw.map((c) => typeof c === 'string' ? { label: c, icon: 'award_star' } : c)
+  let list = raw
+  if (!list) return []
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list)
+    } catch {
+      return []
+    }
+  }
+  if (!Array.isArray(list)) return []
+  return list.map((c) => (typeof c === 'string' ? { label: c, icon: 'award_star' } : c)).filter(Boolean)
 }
 
 function displayCertLabel(label) {

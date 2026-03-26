@@ -16,10 +16,28 @@ function readCache() {
   }
 }
 
+function readAnyCache() {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY)
+    if (!raw) return null
+    const { data } = JSON.parse(raw)
+    return data || null
+  } catch {
+    return null
+  }
+}
+
 function writeCache(data) {
   try {
     sessionStorage.setItem(CACHE_KEY, JSON.stringify({ data, ts: Date.now() }))
   } catch {}
+}
+
+function isMissingRpc(error) {
+  const message = error?.message || ''
+  const code = error?.code || ''
+  return /does not exist|Could not find the function|No function matches/i.test(message)
+    || ['42883', 'PGRST202'].includes(code)
 }
 
 export function useDanmakuUsers() {
@@ -27,7 +45,6 @@ export function useDanmakuUsers() {
   const loading = ref(false)
 
   async function load() {
-    // 优先读缓存
     const cached = readCache()
     if (cached) {
       users.value = cached
@@ -37,7 +54,18 @@ export function useDanmakuUsers() {
     loading.value = true
     try {
       const supabase = requireSupabase()
-      // 只取有头像或有呼号的用户，控制数量
+
+      try {
+        const { data, error } = await supabase.rpc('get_public_danmaku_users', { p_limit: 200 })
+        if (error) throw error
+        const list = (data || []).filter((u) => u?.nickname)
+        users.value = list
+        writeCache(list)
+        return
+      } catch (rpcError) {
+        if (!isMissingRpc(rpcError)) throw rpcError
+      }
+
       const { data, error } = await supabase
         .from('profiles')
         .select('id, nickname, avatar_url, callsign, uid')
@@ -50,14 +78,7 @@ export function useDanmakuUsers() {
       users.value = list
       writeCache(list)
     } catch {
-      // 请求失败时回退旧缓存（不管是否过期）
-      try {
-        const raw = sessionStorage.getItem(CACHE_KEY)
-        if (raw) {
-          const { data } = JSON.parse(raw)
-          users.value = data || []
-        }
-      } catch {}
+      users.value = readAnyCache() || []
     } finally {
       loading.value = false
     }

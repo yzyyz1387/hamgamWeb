@@ -146,50 +146,12 @@ async function review(app, status) {
   try {
     const supabase = requireSupabase()
     const reviewerNote = reviewNotes[app.id] || null
-    const { error } = await supabase
-      .from('callsign_applications')
-      .update({
-        status,
-        reviewer_note: reviewerNote,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq('id', app.id)
+    const { error } = await supabase.rpc('admin_review_callsign_application', {
+      p_application_id: app.id,
+      p_status: status,
+      p_reviewer_note: reviewerNote,
+    })
     if (error) throw error
-
-    if (status === 'APPROVED') {
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .update({ callsign: app.callsign })
-        .eq('id', app.user_id)
-      if (profileError) throw profileError
-
-      await supabase.from('notifications').insert({
-        user_id: app.user_id,
-        type: 'SYSTEM',
-        title: '呼号认证已通过',
-        content: `你的呼号 ${app.callsign} 已通过审核，已更新到你的个人主页。`,
-        link: '/profile',
-      })
-    } else {
-      await supabase.from('notifications').insert({
-        user_id: app.user_id,
-        type: 'SYSTEM',
-        title: '呼号认证未通过',
-        content: reviewerNote || `呼号 ${app.callsign} 的认证申请未通过，请检查提交的材料后重新申请。`,
-        link: '/callsign-apply',
-      })
-    }
-
-    await supabase.rpc('insert_audit_log', {
-      p_action: status === 'APPROVED' ? 'callsign.approved' : 'callsign.rejected',
-      p_entity_type: 'callsign_application',
-      p_entity_id: app.id,
-      p_details: {
-        callsign: app.callsign,
-        target_user_id: app.user_id,
-        reviewer_note: reviewerNote,
-      },
-    }).catch(() => {})
 
     showToast(status === 'APPROVED' ? '已通过并更新呼号' : '已驳回')
     await loadApps()
