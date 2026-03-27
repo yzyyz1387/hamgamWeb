@@ -326,6 +326,91 @@ img {
 .image-card__meta { font-size: 11px; color: #8a9aaa; display: flex; flex-wrap: wrap; gap: 3px; align-items: center; margin-bottom: 6px; }
 .image-card__meta-sep { color: #c8d0d8; }
 .image-card__actions { padding: 0 12px 12px; }
+.image-card__copy-link {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  color: #6750a4;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, transform 0.2s, background 0.2s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  z-index: 2;
+}
+.image-card:hover .image-card__copy-link { opacity: 1; }
+.image-card__copy-link:hover {
+  background: #6750a4;
+  color: #fff;
+  transform: scale(1.1);
+}
+.image-card__copy-link mdui-icon { font-size: 18px; }
+
+.comment-inline-image {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  vertical-align: middle;
+  margin: 4px 0;
+}
+.comment-inline-image:hover { transform: scale(1.02); }
+.comment-image-placeholder {
+  color: #8a9aaa;
+  font-size: 12px;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.comment-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 18px;
+}
+
+.insert-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(103, 80, 164, 0.06);
+  border-radius: 10px;
+}
+.insert-preview img {
+  width: 80px;
+  height: 60px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.insert-preview span {
+  font-size: 13px;
+  font-weight: 500;
+  color: #37424c;
+}
+
+.insert-error {
+  color: #b91c1c;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.insert-help-content p {
+  margin: 8px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
 
 .muted {
   color: #5f6b76;

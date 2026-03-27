@@ -2,7 +2,6 @@
   <div v-if="comments.length" class="comment-list">
     <article v-for="comment in comments" :key="comment.id" class="comment-item">
       <div class="comment-item__head">
-        <!-- 左：头像 + 作者信息 -->
         <div class="comment-author">
           <button type="button" class="avatar-trigger" :title="comment.author_display_name" @click="goUser(comment)">
             <div class="user-badge__avatar">
@@ -14,7 +13,6 @@
             <button type="button" class="comment-author-name" @click="goUser(comment)">
               {{ comment.author_display_name }}
             </button>
-            <!-- 认证徽标：每个 pill 用标准 inline-flex 结构 -->
             <div v-if="parseCerts(comment.author_certifications).length" class="cert-pill-row">
               <span
                 v-for="cert in parseCerts(comment.author_certifications)"
@@ -31,24 +29,67 @@
             </div>
           </div>
         </div>
-        <!-- 右：时间 -->
         <time class="comment-time">{{ formatDate(comment.created_at, { withTime: true }) }}</time>
       </div>
-      <div class="rich-text comment-body" v-html="textToHtml(comment.content)"></div>
+      <div class="rich-text comment-body" v-html="renderContent(comment.content)"></div>
     </article>
+
+    <VueEasyLightbox
+      :visible="lightboxVisible"
+      :imgs="lightboxImages"
+      :index="lightboxIndex"
+      @hide="lightboxVisible = false"
+    />
   </div>
   <div v-else class="empty-state">还没有评论，来写第一条吧。</div>
 </template>
 
 <script setup>
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatDate, textToHtml } from '@/lib/format'
+import { formatDate, sanitizeHtml } from '@/lib/format'
 import { resolvePublicUserUid } from '@/lib/publicProfiles'
 import { toUserProfilePath } from '@/lib/uid'
+import { useGalleryStore } from '@/stores/gallery'
+import VueEasyLightbox from 'vue-easy-lightbox'
 
-defineProps({ comments: { type: Array, default: () => [] } })
+const props = defineProps({ comments: { type: Array, default: () => [] } })
 
 const router = useRouter()
+const galleryStore = useGalleryStore()
+const lightboxVisible = ref(false)
+const lightboxImages = ref([])
+const lightboxIndex = ref(0)
+const imageCache = ref({})
+
+onMounted(() => {
+  document.addEventListener('click', handleImageClick)
+})
+
+function handleImageClick(e) {
+  const target = e.target
+  if (target.classList.contains('comment-inline-image')) {
+    const src = target.dataset.src
+    if (src) {
+      lightboxImages.value = [src]
+      lightboxIndex.value = 0
+      lightboxVisible.value = true
+    }
+  }
+}
+
+function renderContent(content) {
+  if (!content) return ''
+  let html = content.replace(/\n/g, '<br/>')
+  html = html.replace(/\[img:([a-zA-Z0-9-]+)\]/g, (match, slug) => {
+    const img = galleryStore.images.find(i => i.slug === slug)
+    if (img) {
+      return `<img class="comment-inline-image" src="${img.image_url}" alt="${img.title}" data-src="${img.image_url}" title="点击查看大图" />`
+    }
+    return `<span class="comment-image-placeholder" title="图片未找到">[图片:${slug}]</span>`
+  })
+  return sanitizeHtml(html, { ADD_ATTR: ['data-src', 'title'] })
+}
 
 function initials(name = '') {
   return name.trim().slice(0, 1).toUpperCase() || 'U'

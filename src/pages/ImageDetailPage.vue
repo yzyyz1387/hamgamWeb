@@ -85,13 +85,53 @@
           ></AppTextField>
         </div>
 
-        <div v-if="auth.isLoggedIn" class="action-row" style="margin: 10px 0 18px">
+        <div v-if="auth.isLoggedIn" class="comment-actions-row">
+          <mdui-button variant="outlined" @click="showInsertImageDialog = true">
+            <mdui-icon slot="icon" name="image--rounded"></mdui-icon>
+            插入图片
+          </mdui-button>
+          <mdui-button variant="text" @click="showInsertHelp = true">如何插入？</mdui-button>
           <mdui-button variant="filled" :loading="submittingComment" :disabled="commentCooldown > 0" @click="submitComment">
             {{ commentCooldown > 0 ? `${commentCooldown}s 后可发送` : '发送评论' }}
           </mdui-button>
         </div>
 
-        <mdui-card v-else class="section-card" style="margin-bottom: 18px">
+        <mdui-dialog :open="showInsertImageDialog" @closed="showInsertImageDialog = false">
+          <div class="dialog-content">
+            <h3>插入本站图片</h3>
+            <p class="muted" style="margin-bottom: 12px">粘贴从右键菜单复制的图片地址</p>
+            <div class="form-control">
+              <AppTextField
+                v-model="insertImageUrl"
+                label="图片地址"
+                placeholder="https://你的域名/image/image-xxxxx"
+                trim
+              ></AppTextField>
+            </div>
+            <div v-if="insertPreviewImage" class="insert-preview">
+              <img :src="insertPreviewImage.image_url" :alt="insertPreviewImage.title" />
+              <span>{{ insertPreviewImage.title }}</span>
+            </div>
+            <div v-else-if="insertError" class="insert-error">{{ insertError }}</div>
+          </div>
+          <mdui-button slot="action" @click="showInsertImageDialog = false">取消</mdui-button>
+          <mdui-button slot="action" variant="filled" :disabled="!insertPreviewImage" @click="confirmInsertImage">确认插入</mdui-button>
+        </mdui-dialog>
+
+        <mdui-dialog :open="showInsertHelp" @closed="showInsertHelp = false">
+          <div class="dialog-content">
+            <h3>如何插入图片？</h3>
+            <div class="insert-help-content">
+              <p>1. 在主页找到想要引用的图片</p>
+              <p>2. 点击图片旁边的 <mdui-icon name="link--rounded" style="font-size: 18px; vertical-align: middle; color: #6750a4"></mdui-icon> 引用按钮</p>
+              <p>3. 链接会自动复制到剪贴板</p>
+              <p>4. 回到评论区，点击"插入图片"，粘贴链接即可</p>
+            </div>
+          </div>
+          <mdui-button slot="action" variant="filled" @click="showInsertHelp = false">我知道了</mdui-button>
+        </mdui-dialog>
+
+        <mdui-card v-if="!auth.isLoggedIn" class="section-card" style="margin-bottom: 18px">
           <div class="section-card__header">
             <div>
               <h3>登录后参与评论</h3>
@@ -147,8 +187,12 @@ const reactionBusy = ref(false)
 const submittingComment = ref(false)
 const lightboxOpen = ref(false)
 const contributorUid = ref(null)
-// 评论冷却：30 秒内只能发一条
 const commentCooldown = ref(0)
+const showInsertImageDialog = ref(false)
+const showInsertHelp = ref(false)
+const insertImageUrl = ref('')
+const insertPreviewImage = ref(null)
+const insertError = ref('')
 let commentCooldownTimer = null
 
 function startCommentCooldown(seconds = 30) {
@@ -202,6 +246,27 @@ watch(
     }
   },
 )
+watch(insertImageUrl, async (url) => {
+  insertPreviewImage.value = null
+  insertError.value = ''
+  if (!url) return
+  const slugMatch = url.match(/\/image\/([^\/\?]+)/)
+  if (!slugMatch) {
+    insertError.value = '请输入有效的图片地址'
+    return
+  }
+  const slug = slugMatch[1]
+  try {
+    const found = await galleryStore.fetchImageBySlug(slug)
+    if (found) {
+      insertPreviewImage.value = found
+    } else {
+      insertError.value = '没有找到这张图片'
+    }
+  } catch {
+    insertError.value = '查询图片失败'
+  }
+})
 
 async function onToggleReaction(emoji) {
   if (!auth.user || !image.value || reactionBusy.value) {
@@ -272,5 +337,16 @@ async function copyShareLink() {
   const base = `${window.location.origin}${window.location.pathname}`
   await copyText(`${base}#/image/${image.value.slug}`)
   showToast('已复制分享链接')
+}
+
+function confirmInsertImage() {
+  if (!insertPreviewImage.value) return
+  const img = insertPreviewImage.value
+  const insertText = `[img:${img.slug}]`
+  commentText.value = commentText.value ? `${commentText.value} ${insertText}` : insertText
+  showInsertImageDialog.value = false
+  insertImageUrl.value = ''
+  insertPreviewImage.value = null
+  showToast('图片已插入')
 }
 </script>
