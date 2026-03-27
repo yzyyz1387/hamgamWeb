@@ -160,13 +160,19 @@ export function useContextMenu() {
         divided: true
       })
 
-      const reactions = ['👍', '❤️', '😄', '😮', '😢', '🔥', '👏', '🤔']
-      reactions.forEach(emoji => {
-        items.push({
-          label: emoji,
-          customClass: 'reaction-menu-item',
-          onClick: () => addReaction(imageId, emoji)
-        })
+      items.push({
+        label: '发表反应',
+        icon: 'mdui-icon:emoji_emotions',
+        children: [
+          { label: '👍', onClick: () => addReaction(imageId, '👍') },
+          { label: '❤️', onClick: () => addReaction(imageId, '❤️') },
+          { label: '😄', onClick: () => addReaction(imageId, '😄') },
+          { label: '😮', onClick: () => addReaction(imageId, '😮') },
+          { label: '😢', onClick: () => addReaction(imageId, '😢') },
+          { label: '🔥', onClick: () => addReaction(imageId, '🔥') },
+          { label: '👏', onClick: () => addReaction(imageId, '👏') },
+          { label: '🤔', onClick: () => addReaction(imageId, '🤔') }
+        ]
       })
     }
 
