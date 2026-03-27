@@ -286,6 +286,8 @@ async function onToggleReaction(emoji) {
       userId: auth.user.id,
       emoji,
       active,
+      imageTitle: image.value.title,
+      imageSlug: image.value.slug,
     })
     myReactions.value = selected
       ? [...myReactions.value, emoji]
@@ -324,6 +326,9 @@ async function submitComment() {
       userId: auth.user.id,
       content: trimmed,
       parentId: replyingTo.value?.id || null,
+      imageTitle: image.value.title,
+      imageSlug: image.value.slug,
+      replyToUser: replyingTo.value?.author_display_name || null,
     })
     comments.value = [data, ...comments.value]
     galleryStore.incrementCommentCountLocally(image.value.id, 1)

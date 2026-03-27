@@ -2521,6 +2521,17 @@ mdui-icon {
 .audit-user--actor[onclick], button.audit-user--actor { cursor: pointer; }
 button.audit-user--actor:hover { color: #d19fe8; }
 
+.audit-image-link {
+  border: none;
+  background: transparent;
+  color: #6750a4;
+  cursor: pointer;
+  font-size: inherit;
+  padding: 0;
+  font-weight: 500;
+}
+.audit-image-link:hover { text-decoration: underline; }
+
 .audit-panel__footer { margin-top: 10px; text-align: center; }
 .audit-load-more {
   border: 1px solid rgba(103,80,164,0.3);

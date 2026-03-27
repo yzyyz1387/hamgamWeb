@@ -1,5 +1,6 @@
 import { siteConfig } from '@/config/site'
 import { requireSupabase, supabaseEnabled } from '@/lib/supabase'
+import { safeInsertAuditLog } from '@/lib/audit'
 
 export async function fetchMyImageReactions(imageId, userId) {
   if (!supabaseEnabled || !imageId || !userId) return []
@@ -13,7 +14,7 @@ export async function fetchMyImageReactions(imageId, userId) {
   return (data || []).map((item) => item.emoji)
 }
 
-export async function toggleImageReaction({ imageId, userId, emoji, active }) {
+export async function toggleImageReaction({ imageId, userId, emoji, active, imageTitle, imageSlug }) {
   const supabase = requireSupabase()
   if (active) {
     const { error } = await supabase
@@ -23,6 +24,12 @@ export async function toggleImageReaction({ imageId, userId, emoji, active }) {
       .eq('user_id', userId)
       .eq('emoji', emoji)
     if (error) throw error
+    await safeInsertAuditLog({
+      action: 'reaction.removed',
+      entityType: 'image',
+      entityId: imageId,
+      details: { emoji, image_title: imageTitle, image_slug: imageSlug },
+    })
     return false
   }
   const { error } = await supabase.from('image_reactions').insert({
@@ -31,6 +38,12 @@ export async function toggleImageReaction({ imageId, userId, emoji, active }) {
     emoji,
   })
   if (error) throw error
+  await safeInsertAuditLog({
+    action: 'reaction.added',
+    entityType: 'image',
+    entityId: imageId,
+    details: { emoji, image_title: imageTitle, image_slug: imageSlug },
+  })
   return true
 }
 
@@ -47,7 +60,7 @@ export async function fetchVisibleComments(imageId) {
   return data || []
 }
 
-export async function createComment({ imageId, userId, content, parentId }) {
+export async function createComment({ imageId, userId, content, parentId, imageTitle, imageSlug, replyToUser }) {
   const supabase = requireSupabase()
   const { data, error } = await supabase
     .from('comments')
@@ -60,6 +73,37 @@ export async function createComment({ imageId, userId, content, parentId }) {
     .select('*')
     .single()
   if (error) throw error
+  
+  const contentPreview = content.length > 50 ? content.slice(0, 50) + '...' : content
+  
+  if (parentId) {
+    await safeInsertAuditLog({
+      action: 'comment.replied',
+      entityType: 'comment',
+      entityId: data.id,
+      details: {
+        image_id: imageId,
+        image_title: imageTitle,
+        image_slug: imageSlug,
+        parent_id: parentId,
+        reply_to_user: replyToUser,
+        content_preview: contentPreview,
+      },
+    })
+  } else {
+    await safeInsertAuditLog({
+      action: 'comment.created',
+      entityType: 'comment',
+      entityId: data.id,
+      details: {
+        image_id: imageId,
+        image_title: imageTitle,
+        image_slug: imageSlug,
+        content_preview: contentPreview,
+      },
+    })
+  }
+  
   return data
 }
 

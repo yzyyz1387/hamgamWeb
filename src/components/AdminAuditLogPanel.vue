@@ -36,6 +36,14 @@
           <span v-else class="audit-user audit-user--subject">{{ entry.subject.label }}</span>
         </template>
 
+        <!-- 图片标题（可点击） -->
+        <template v-if="entry.imageSlug">
+          <span class="audit-sep"> </span>
+          <button class="audit-image-link" @click="goImage(entry.imageSlug)">
+            《{{ entry.imageTitle || entry.imageSlug }}》
+          </button>
+        </template>
+
         <!-- 额外信息 -->
         <span v-if="entry.extra" class="audit-extra"> · {{ entry.extra }}</span>
       </div>
@@ -142,5 +150,9 @@ function formatTime(iso) {
 function goUser(uid) {
   const path = toUserProfilePath(uid)
   if (path) router.push(path)
+}
+
+function goImage(slug) {
+  if (slug) router.push(`/image/${slug}`)
 }
 </script>

@@ -18,6 +18,10 @@ const ACTION_LABELS = {
   'image.deleted': '删除了图片',
   'callsign.approved': '通过了呼号认证',
   'callsign.rejected': '驳回了呼号认证',
+  'comment.created': '发表了评论',
+  'comment.replied': '回复了评论',
+  'reaction.added': '添加了反应',
+  'reaction.removed': '移除了反应',
 }
 
 const ACTION_LEVEL = {
@@ -34,6 +38,10 @@ const ACTION_LEVEL = {
   'image.deleted': 'error',
   'callsign.approved': 'success',
   'callsign.rejected': 'warn',
+  'comment.created': 'info',
+  'comment.replied': 'info',
+  'reaction.added': 'info',
+  'reaction.removed': 'info',
 }
 
 /**
@@ -169,10 +177,33 @@ export function formatAuditLog(log, nickMap = new Map()) {
       if (d.reviewer_note) extra = `${extra ? `${extra}，` : ''}原因：${d.reviewer_note}`
       break
 
+    case 'comment.created':
+      description = '发表了评论'
+      extra = d.content_preview || null
+      break
+
+    case 'comment.replied':
+      description = '回复了评论'
+      extra = d.reply_to_user ? `回复给 ${d.reply_to_user}` : null
+      if (d.content_preview) extra = `${extra || ''}：${d.content_preview}`
+      break
+
+    case 'reaction.added':
+      description = '添加了反应'
+      extra = d.emoji || null
+      break
+
+    case 'reaction.removed':
+      description = '移除了反应'
+      extra = d.emoji || null
+      break
+
     default:
       description = action
       break
   }
+
+  const imageSlug = d.image_slug || d.slug || null
 
   return {
     id: log.id,
@@ -183,6 +214,8 @@ export function formatAuditLog(log, nickMap = new Map()) {
     description,
     subject,
     extra,
+    imageSlug,
+    imageTitle: d.image_title || d.title || null,
     raw: log,
   }
 }
