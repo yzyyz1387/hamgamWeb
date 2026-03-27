@@ -542,6 +542,19 @@ img {
   overflow-y: auto;
 }
 
+@media (max-width: 768px) {
+  .image-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .image-viewer {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 .image-viewer__frame {
   border-radius: 24px;
   overflow: hidden;
