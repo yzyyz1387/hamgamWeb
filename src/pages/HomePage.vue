@@ -13,8 +13,8 @@
       </div>
       <div class="home-hero__right">
         <div class="action-row" style="justify-content:flex-end">
-          <mdui-button :variant="sortMode === 'shuffle' ? 'filled' : 'text'" @click="sortMode = 'shuffle'">乱序</mdui-button>
-          <mdui-button :variant="sortMode === 'recent' ? 'filled' : 'text'" @click="sortMode = 'recent'">最新</mdui-button>
+          <mdui-button :variant="galleryStore.sortMode === 'shuffle' ? 'filled' : 'text'" @click="setSortMode('shuffle')">乱序</mdui-button>
+          <mdui-button :variant="galleryStore.sortMode === 'recent' ? 'filled' : 'text'" @click="setSortMode('recent')">最新</mdui-button>
         </div>
         <div class="form-control" style="margin-top:8px">
           <AppTextField v-model="searchKeyword" trim type="search" label="搜索图片" placeholder="搜索标题、描述、贡献者…"></AppTextField>
@@ -97,7 +97,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatDate, stableShuffle } from '@/lib/format'
+import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 import { showToast } from '@/lib/toast'
 import { supabaseEnabled, requireSupabase } from '@/lib/supabase'
@@ -113,11 +113,8 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const searchKeyword = ref('')
-const sortMode = ref('shuffle')
-const shuffleSeed = ref(Date.now())
 const friendLinks = ref([])
 
-// 分页
 const PAGE_SIZE = 30
 const page = ref(1)
 const loadingMore = ref(false)
@@ -136,10 +133,15 @@ const filteredImages = computed(() => {
       .filter(Boolean)
       .some((item) => item.toLowerCase().includes(keyword))
   })
-  if (sortMode.value === 'recent') {
+  if (galleryStore.sortMode === 'recent') {
     return [...base].sort((a, b) => new Date(b.sort_at || 0) - new Date(a.sort_at || 0))
   }
-  return stableShuffle(base, shuffleSeed.value)
+  return galleryStore.sortedImages.filter((img) => {
+    if (!keyword) return true
+    return [img.title, img.description, img.contributor_name]
+      .filter(Boolean)
+      .some((item) => item.toLowerCase().includes(keyword))
+  })
 })
 
 const contributorCount = computed(
@@ -149,13 +151,21 @@ const totalComments = computed(() =>
   galleryStore.images.reduce((sum, i) => sum + Number(i.comments_count || 0), 0),
 )
 
-// 分页后的图片
 const pagedImages = computed(() => filteredImages.value.slice(0, page.value * PAGE_SIZE))
 
-// 搜索/排序变化时重置分页
-watch([searchKeyword, sortMode, shuffleSeed], () => { page.value = 1 })
+watch([searchKeyword], () => { page.value = 1 })
+
+function setSortMode(mode) {
+  galleryStore.setSortMode(mode)
+}
+
+function reshuffle() {
+  galleryStore.reshuffle()
+  page.value = 1
+}
 
 onMounted(async () => {
+  galleryStore.initFromStorage()
   loading.value = true
   try {
     await Promise.all([galleryStore.loadImages(), appStore.loadAnnouncements()])
@@ -164,7 +174,6 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
-  // 加载友情链接（静默失败）
   if (supabaseEnabled) {
     try {
       const supabase = requireSupabase()
@@ -174,7 +183,6 @@ onMounted(async () => {
       friendLinks.value = data || []
     } catch {}
   }
-  // IntersectionObserver 触发加载更多
   observer = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting && !loadingMore.value) {
       if (pagedImages.value.length < filteredImages.value.length) {
@@ -191,10 +199,11 @@ onMounted(async () => {
 
 onUnmounted(() => { observer?.disconnect() })
 
-function reshuffle() {
-  shuffleSeed.value = Date.now()
-  sortMode.value = 'shuffle'
+function goRandom() {
+  router.push('/random')
 }
-function goRandom() { router.push('/random') }
-function goSubmit() { router.push('/submit') }
+
+function goSubmit() {
+  router.push('/submit')
+}
 </script>

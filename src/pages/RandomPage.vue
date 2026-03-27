@@ -84,11 +84,16 @@
     <button class="random-fab" @click="pickRandom" title="再来一张">
       <mdui-icon name="shuffle--rounded"></mdui-icon>
     </button>
+    
+    <div v-if="viewedCount > 0" class="viewed-info">
+      <span>本次会话已浏览 {{ viewedCount }} 张</span>
+      <button v-if="viewedCount >= totalImages * 0.8" @click="clearHistory" class="clear-btn">重置</button>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -116,9 +121,12 @@ const reactionBusy = ref(false)
 const lightboxOpen = ref(false)
 const submittingComment = ref(false)
 const contributorUid = ref(null)
-// 评论冷却
 const commentCooldown = ref(0)
 let commentCooldownTimer = null
+
+const viewedCount = computed(() => galleryStore.viewedImageIds.size)
+const totalImages = computed(() => galleryStore.images.length)
+
 function startCommentCooldown(seconds = 30) {
   commentCooldown.value = seconds
   if (commentCooldownTimer) clearInterval(commentCooldownTimer)
@@ -129,6 +137,7 @@ function startCommentCooldown(seconds = 30) {
 }
 
 onMounted(async () => {
+  galleryStore.initFromStorage()
   loading.value = true
   try {
     await Promise.all([auth.init(), galleryStore.loadImages()])
@@ -159,12 +168,38 @@ async function loadContributorLink() {
 async function pickRandom() {
   const pool = galleryStore.images
   if (!pool.length) { currentImage.value = null; contributorUid.value = null; return }
-  const candidates = pool.filter((item) => item.id !== currentImage.value?.id)
-  const source = candidates.length ? candidates : pool
-  currentImage.value = source[Math.floor(Math.random() * source.length)]
+  
+  const unviewed = galleryStore.unviewedImages
+  let candidates = unviewed.length > 0 ? unviewed : pool
+  
+  if (currentImage.value) {
+    candidates = candidates.filter((item) => item.id !== currentImage.value.id)
+  }
+  
+  if (candidates.length === 0) {
+    candidates = pool.filter((item) => item.id !== currentImage.value?.id)
+  }
+  if (candidates.length === 0) {
+    candidates = pool
+  }
+  
+  const randomIndex = Math.floor(Math.random() * candidates.length)
+  currentImage.value = candidates[randomIndex]
+  
+  galleryStore.markAsViewed(currentImage.value.id)
+  
   comments.value = []
   await Promise.all([loadMyReactions(), loadContributorLink()])
   try { comments.value = await fetchVisibleComments(currentImage.value.id) } catch {}
+  
+  if (unviewed.length === 0 && pool.length > 0) {
+    showToast('已浏览全部图片，重新开始随机')
+  }
+}
+
+function clearHistory() {
+  galleryStore.clearViewedHistory()
+  showToast('已重置浏览记录')
 }
 
 function goContributorProfile() {
@@ -214,3 +249,34 @@ async function onToggleReaction(emoji) {
   }
 }
 </script>
+
+<style scoped>
+.viewed-info {
+  position: fixed;
+  bottom: 80px;
+  right: 24px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  z-index: 100;
+}
+
+.clear-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.clear-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+</style>
