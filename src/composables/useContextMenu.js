@@ -164,14 +164,14 @@ export function useContextMenu() {
         label: '发表反应',
         icon: 'mdui-icon:emoji_emotions',
         children: [
-          { label: '👍', onClick: () => addReaction(imageId, '👍') },
-          { label: '❤️', onClick: () => addReaction(imageId, '❤️') },
-          { label: '😄', onClick: () => addReaction(imageId, '😄') },
-          { label: '😮', onClick: () => addReaction(imageId, '😮') },
-          { label: '😢', onClick: () => addReaction(imageId, '😢') },
-          { label: '🔥', onClick: () => addReaction(imageId, '🔥') },
-          { label: '👏', onClick: () => addReaction(imageId, '👏') },
-          { label: '🤔', onClick: () => addReaction(imageId, '🤔') }
+          { label: '👍 赞', onClick: () => addReaction(imageId, '👍') },
+          { label: '❤️ 喜欢', onClick: () => addReaction(imageId, '❤️') },
+          { label: '😄 开心', onClick: () => addReaction(imageId, '😄') },
+          { label: '😮 惊讶', onClick: () => addReaction(imageId, '😮') },
+          { label: '😢 难过', onClick: () => addReaction(imageId, '😢') },
+          { label: '🔥 火了', onClick: () => addReaction(imageId, '🔥') },
+          { label: '👏 鼓掌', onClick: () => addReaction(imageId, '👏') },
+          { label: '🤔 思考', onClick: () => addReaction(imageId, '🤔') }
         ]
       })
     }
