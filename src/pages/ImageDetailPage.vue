@@ -73,10 +73,14 @@
         </div>
 
         <div v-if="auth.isLoggedIn" class="form-grid comment-compose-grid">
+          <div v-if="replyingTo" class="reply-indicator">
+            <span>回复 <strong>{{ replyingTo.author_display_name }}</strong></span>
+            <button type="button" class="reply-cancel-btn" @click="cancelReply">取消</button>
+          </div>
           <AppTextField
             v-model="commentText"
-            label="发表评论"
-            placeholder="写点什么吧…"
+            :label="replyingTo ? '发表回复' : '发表评论'"
+            :placeholder="replyingTo ? `回复 ${replyingTo.author_display_name}…` : '写点什么吧…'"
             :maxlength="1000"
             :rows="4"
             autosize
@@ -104,7 +108,7 @@
               <AppTextField
                 v-model="insertImageUrl"
                 label="图片地址"
-                placeholder="https://你的域名/image/image-xxxxx"
+                placeholder="输入链接..."
                 trim
               ></AppTextField>
             </div>
@@ -141,7 +145,7 @@
           </div>
         </mdui-card>
 
-        <CommentList :comments="comments"></CommentList>
+        <CommentList :comments="comments" @reply="handleReply"></CommentList>
       </aside>
     </div>
 
@@ -193,6 +197,7 @@ const showInsertHelp = ref(false)
 const insertImageUrl = ref('')
 const insertPreviewImage = ref(null)
 const insertError = ref('')
+const replyingTo = ref(null)
 let commentCooldownTimer = null
 
 function startCommentCooldown(seconds = 30) {
@@ -303,7 +308,6 @@ async function submitComment() {
   if (!auth.user || !image.value) return
   const trimmed = commentText.value.trim()
   if (!trimmed) { showToast('评论内容不能为空'); return }
-  // 空白/纯符号检测：去掉空白后至少 2 个有效字符
   if (trimmed.replace(/[\s\p{P}\p{S}]/gu, '').length < 1 && trimmed.length < 2) {
     showToast('评论内容无效')
     return
@@ -313,23 +317,39 @@ async function submitComment() {
     return
   }
   submittingComment.value = true
+  const isReply = !!replyingTo.value
   try {
     const data = await createComment({
       imageId: image.value.id,
       userId: auth.user.id,
       content: trimmed,
+      parentId: replyingTo.value?.id || null,
     })
     comments.value = [data, ...comments.value]
     galleryStore.incrementCommentCountLocally(image.value.id, 1)
     image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
     commentText.value = ''
-    showToast('评论已发送')
+    replyingTo.value = null
+    showToast(isReply ? '回复已发送' : '评论已发送')
     startCommentCooldown(30)
   } catch (error) {
     showToast(getErrorMessage(error))
   } finally {
     submittingComment.value = false
   }
+}
+
+function handleReply(comment) {
+  replyingTo.value = comment
+  const textField = document.querySelector('.comment-compose-grid textarea, .comment-compose-grid input')
+  if (textField) {
+    textField.focus()
+    textField.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+}
+
+function cancelReply() {
+  replyingTo.value = null
 }
 
 async function copyShareLink() {

@@ -21,17 +21,24 @@
             v-for="item in notifications"
             :key="item.id"
             class="notification-item"
-            :class="{ 'notification-item--active': item.id === activeNotification?.id }"
+            :class="{ 'notification-item--active': item.id === activeNotification?.id, 'notification-item--unread': !item.is_read }"
             @click="selectNotification(item)"
           >
-            <div class="list-item-card__head">
-              <div>
-                <strong>{{ item.title }}</strong>
-                <div class="muted">{{ timeAgo(item.created_at) }}</div>
+            <div class="notification-item__row">
+              <div class="notification-item__main">
+                <strong class="notification-item__title">{{ item.title }}</strong>
+                <div class="notification-item__meta">
+                  <span class="notification-type-badge" :class="`notification-type-badge--${typeClass(item.type)}`">
+                    {{ typeLabel(item.type) }}
+                  </span>
+                  <span v-if="item.actor_display_name" class="notification-actor">
+                    来自 <button type="button" class="actor-link" @click.stop="goActor(item)">{{ item.actor_display_name }}</button>
+                  </span>
+                  <span class="notification-time">{{ timeAgo(item.created_at) }}</span>
+                </div>
               </div>
-              <mdui-chip v-if="!item.is_read">未读</mdui-chip>
+              <span v-if="!item.is_read" class="unread-dot"></span>
             </div>
-            <div class="muted">{{ item.content }}</div>
           </article>
         </div>
 
@@ -44,12 +51,26 @@
             <div>
               <div class="eyebrow">通知详情</div>
               <h2>{{ activeNotification.title }}</h2>
-              <p class="muted">{{ formatDate(activeNotification.created_at, { withTime: true }) }}</p>
+              <div class="notification-detail-meta">
+                <span class="notification-type-badge" :class="`notification-type-badge--${typeClass(activeNotification.type)}`">
+                  {{ typeLabel(activeNotification.type) }}
+                </span>
+                <span>{{ formatDate(activeNotification.created_at, { withTime: true }) }}</span>
+                <span v-if="activeNotification.actor_display_name">
+                  来自 <button type="button" class="actor-link" @click="goActor(activeNotification)">{{ activeNotification.actor_display_name }}</button>
+                </span>
+              </div>
             </div>
-            <mdui-chip>{{ typeLabel(activeNotification.type) }}</mdui-chip>
           </div>
 
           <div class="rich-text" v-html="textToHtml(activeNotification.content)"></div>
+
+          <div v-if="activeNotification.metadata?.submission_title" class="notification-submission-info">
+            <strong>投稿内容：</strong>
+            <button type="button" class="submission-link" @click="goSubmission(activeNotification)">
+              {{ activeNotification.metadata.submission_title }}
+            </button>
+          </div>
 
           <div class="action-row" style="margin-top: 20px">
             <mdui-button v-if="safeLink(activeNotification.link)" variant="filled" @click="openLink">
@@ -155,18 +176,45 @@ function openLink() {
   router.push(link)
 }
 
+function goActor(item) {
+  if (item.actor_id) {
+    router.push(`/user/${item.actor_id}`)
+  }
+}
+
+function goSubmission(item) {
+  if (item.link) {
+    router.push(item.link)
+  }
+}
+
 function typeLabel(type) {
   return (
     {
-      SYSTEM: '系统消息',
+      SYSTEM: '系统通知',
       SUBMISSION_CREATED: '新投稿',
       SUBMISSION_PUBLISHED: '审核通过',
       SUBMISSION_REJECTED: '审核驳回',
       COMMENT_CREATED: '新评论',
-      ANNOUNCEMENT: '系统公告',
+      ANNOUNCEMENT: '管理公告',
       ROLE_CHANGED: '账号变更',
-      ACCOUNT_UPDATED: '账户信息更新',
+      ACCOUNT_UPDATED: '账户更新',
     }[type] || type
+  )
+}
+
+function typeClass(type) {
+  return (
+    {
+      SYSTEM: 'system',
+      SUBMISSION_CREATED: 'submission',
+      SUBMISSION_PUBLISHED: 'success',
+      SUBMISSION_REJECTED: 'error',
+      COMMENT_CREATED: 'comment',
+      ANNOUNCEMENT: 'announcement',
+      ROLE_CHANGED: 'role',
+      ACCOUNT_UPDATED: 'account',
+    }[type] || 'default'
   )
 }
 </script>

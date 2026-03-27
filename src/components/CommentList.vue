@@ -1,38 +1,82 @@
 <template>
   <div v-if="comments.length" class="comment-list">
-    <article v-for="comment in comments" :key="comment.id" class="comment-item">
-      <div class="comment-item__head">
-        <div class="comment-author">
-          <button type="button" class="avatar-trigger" :title="comment.author_display_name" @click="goUser(comment)">
-            <div class="user-badge__avatar">
-              <img v-if="comment.author_avatar_url" :src="comment.author_avatar_url" alt="avatar" />
-              <span v-else>{{ initials(comment.author_display_name) }}</span>
-            </div>
-          </button>
-          <div class="comment-author__body">
-            <button type="button" class="comment-author-name" @click="goUser(comment)">
-              {{ comment.author_display_name }}
+    <template v-for="comment in topLevelComments" :key="comment.id">
+      <article class="comment-item">
+        <div class="comment-item__head">
+          <div class="comment-author">
+            <button type="button" class="avatar-trigger" :title="comment.author_display_name" @click="goUser(comment)">
+              <div class="user-badge__avatar">
+                <img v-if="comment.author_avatar_url" :src="comment.author_avatar_url" alt="avatar" />
+                <span v-else>{{ initials(comment.author_display_name) }}</span>
+              </div>
             </button>
-            <div v-if="parseCerts(comment.author_certifications).length" class="cert-pill-row">
-              <span
-                v-for="cert in parseCerts(comment.author_certifications)"
-                :key="`${cert.label}-${cert.icon}`"
-                class="cert-pill"
-                :class="{ 'comment-cert-pill--icon-only': !displayCertLabel(cert.label) }"
-                :title="cert.label || ''"
-              >
-                <span class="cert-pill__icon-wrap">
-                  <mdui-icon :name="certIconName(cert.icon)"></mdui-icon>
+            <div class="comment-author__body">
+              <button type="button" class="comment-author-name" @click="goUser(comment)">
+                {{ comment.author_display_name }}
+              </button>
+              <div v-if="parseCerts(comment.author_certifications).length" class="cert-pill-row">
+                <span
+                  v-for="cert in parseCerts(comment.author_certifications)"
+                  :key="`${cert.label}-${cert.icon}`"
+                  class="cert-pill"
+                  :class="{ 'comment-cert-pill--icon-only': !displayCertLabel(cert.label) }"
+                  :title="cert.label || ''"
+                >
+                  <span class="cert-pill__icon-wrap">
+                    <mdui-icon :name="certIconName(cert.icon)"></mdui-icon>
+                  </span>
+                  <span v-if="displayCertLabel(cert.label)" class="cert-pill__label">{{ displayCertLabel(cert.label) }}</span>
                 </span>
-                <span v-if="displayCertLabel(cert.label)" class="cert-pill__label">{{ displayCertLabel(cert.label) }}</span>
-              </span>
+              </div>
             </div>
           </div>
+          <time class="comment-time">{{ formatDate(comment.created_at, { withTime: true }) }}</time>
         </div>
-        <time class="comment-time">{{ formatDate(comment.created_at, { withTime: true }) }}</time>
-      </div>
-      <div class="rich-text comment-body" v-html="renderContent(comment.content)"></div>
-    </article>
+        <div class="rich-text comment-body" v-html="renderContent(comment.content)"></div>
+        <div class="comment-actions">
+          <button type="button" class="comment-reply-btn" @click="$emit('reply', comment)">
+            <mdui-icon name="reply--rounded"></mdui-icon>
+            回复
+          </button>
+        </div>
+
+        <div v-if="getAllReplies(comment.id).length" class="comment-replies">
+          <article 
+            v-for="reply in getAllReplies(comment.id)" 
+            :key="reply.id" 
+            class="comment-item comment-item--reply"
+            :style="{ 'margin-left': getReplyIndent(reply) + 'px' }"
+          >
+            <div class="comment-item__head">
+              <div class="comment-author">
+                <button type="button" class="avatar-trigger" :title="reply.author_display_name" @click="goUser(reply)">
+                  <div class="user-badge__avatar user-badge__avatar--sm">
+                    <img v-if="reply.author_avatar_url" :src="reply.author_avatar_url" alt="avatar" />
+                    <span v-else>{{ initials(reply.author_display_name) }}</span>
+                  </div>
+                </button>
+                <div class="comment-author__body">
+                  <button type="button" class="comment-author-name" @click="goUser(reply)">
+                    {{ reply.author_display_name }}
+                  </button>
+                  <span v-if="getReplyTarget(reply)" class="reply-target">
+                    回复 <button type="button" class="reply-target-link" @click="goToComment(getReplyTarget(reply))">{{ getReplyTarget(reply).author_display_name }}</button>
+                  </span>
+                </div>
+              </div>
+              <time class="comment-time">{{ formatDate(reply.created_at, { withTime: true }) }}</time>
+            </div>
+            <div class="rich-text comment-body" v-html="renderContent(reply.content)"></div>
+            <div class="comment-actions">
+              <button type="button" class="comment-reply-btn" @click="$emit('reply', reply)">
+                <mdui-icon name="reply--rounded"></mdui-icon>
+                回复
+              </button>
+            </div>
+          </article>
+        </div>
+      </article>
+    </template>
 
     <VueEasyLightbox
       :visible="lightboxVisible"
@@ -45,7 +89,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDate, sanitizeHtml } from '@/lib/format'
 import { resolvePublicUserUid } from '@/lib/publicProfiles'
@@ -54,13 +98,59 @@ import { useGalleryStore } from '@/stores/gallery'
 import VueEasyLightbox from 'vue-easy-lightbox'
 
 const props = defineProps({ comments: { type: Array, default: () => [] } })
+const emit = defineEmits(['reply'])
 
 const router = useRouter()
 const galleryStore = useGalleryStore()
 const lightboxVisible = ref(false)
 const lightboxImages = ref([])
 const lightboxIndex = ref(0)
-const imageCache = ref({})
+
+const topLevelComments = computed(() => {
+  return props.comments.filter(c => !c.parent_id)
+})
+
+const commentsMap = computed(() => {
+  const map = new Map()
+  props.comments.forEach(c => map.set(c.id, c))
+  return map
+})
+
+function getAllReplies(rootId) {
+  const replies = []
+  const visited = new Set()
+  
+  function collectReplies(parentId, depth = 0) {
+    props.comments.forEach(c => {
+      if (c.parent_id === parentId && !visited.has(c.id)) {
+        visited.add(c.id)
+        c._depth = depth
+        replies.push(c)
+        collectReplies(c.id, depth + 1)
+      }
+    })
+  }
+  
+  collectReplies(rootId)
+  return replies
+}
+
+function getReplyIndent(reply) {
+  const depth = reply._depth || 0
+  if (depth === 0) return 0
+  return 16
+}
+
+function getReplyTarget(reply) {
+  if (!reply.parent_id) return null
+  return commentsMap.value.get(reply.parent_id)
+}
+
+function goToComment(comment) {
+  if (comment) {
+    router.push(`/user/${comment.user_id}`)
+  }
+}
 
 onMounted(() => {
   document.addEventListener('click', handleImageClick)

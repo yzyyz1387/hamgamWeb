@@ -47,7 +47,7 @@ export async function fetchVisibleComments(imageId) {
   return data || []
 }
 
-export async function createComment({ imageId, userId, content }) {
+export async function createComment({ imageId, userId, content, parentId }) {
   const supabase = requireSupabase()
   const { data, error } = await supabase
     .from('comments')
@@ -55,6 +55,7 @@ export async function createComment({ imageId, userId, content }) {
       image_id: imageId,
       user_id: userId,
       content,
+      parent_id: parentId || null,
     })
     .select('*')
     .single()
