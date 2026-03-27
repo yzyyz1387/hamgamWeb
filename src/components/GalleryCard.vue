@@ -1,7 +1,12 @@
 <template>
-  <div class="image-card" @click="goDetail">
+  <div
+    class="image-card"
+    :data-image-slug="image.slug"
+    :data-image-id="image.id"
+    @click="goDetail"
+  >
     <div class="image-card__media">
-      <img :src="image.image_url" :alt="image.title" loading="lazy" />
+      <img :src="image.image_url" :alt="image.title" loading="lazy" :data-image-slug="image.slug" :data-image-id="image.id" />
     </div>
     <div class="image-card__body">
       <h3 class="image-card__title">{{ image.title }}</h3>

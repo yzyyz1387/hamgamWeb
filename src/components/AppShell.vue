@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell">
+  <div class="app-shell" @contextmenu="onContextMenu">
     <header class="app-shell__header">
       <div class="app-shell__topbar container">
         <div class="app-shell__brand" @click="goTo('/')">{{ siteConfig.name }}</div>
@@ -149,6 +149,7 @@ import { showToast } from '@/lib/toast'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useAdminStore } from '@/stores/admin'
+import { useContextMenu } from '@/composables/useContextMenu'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import NoticeDialog from '@/components/NoticeDialog.vue'
 import SiteFooter from '@/components/SiteFooter.vue'
@@ -160,9 +161,14 @@ const adminStore = useAdminStore()
 const menuOpen = ref(false)
 const menuRef = ref(null)
 const mobileMenuOpen = ref(false)
+const { showContextMenu } = useContextMenu()
 
 const adminBadgeVisible = computed(() => auth.canModerate && adminStore.pendingTotal > 0)
 const adminBadgeText = computed(() => adminStore.pendingTotal > 99 ? '99+' : adminStore.pendingTotal)
+
+function onContextMenu(e) {
+  showContextMenu(e)
+}
 
 onMounted(async () => {
   try {

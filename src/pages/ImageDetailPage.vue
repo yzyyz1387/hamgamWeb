@@ -5,10 +5,10 @@
       <div>正在加载图片详情…</div>
     </div>
 
-    <div v-else-if="image" class="image-layout">
+    <div v-else-if="image" class="image-layout" :data-image-slug="image.slug" :data-image-id="image.id">
       <div class="image-viewer">
         <div class="image-viewer__frame" @click="lightboxOpen = true" style="cursor: zoom-in">
-          <img :src="image.image_url" :alt="image.title" />
+          <img :src="image.image_url" :alt="image.title" :data-image-slug="image.slug" :data-image-id="image.id" />
         </div>
 
         <VueEasyLightbox

@@ -67,75 +67,50 @@
       <div>正在加载图片列表…</div>
     </div>
 
-    <div v-else-if="filteredImages.length" class="submission-list admin-image-list admin-image-list--compact">
-      <mdui-card v-for="item in filteredImages" :key="item.id" class="section-card submission-card admin-image-card admin-image-card--compact">
-        <div class="submission-card__layout admin-image-card__layout admin-image-card__layout--compact">
-          <button type="button" class="submission-thumb admin-image-thumb admin-image-thumb--button" @click="openLightbox(item)">
-            <img :src="item.image_url" :alt="item.title" loading="lazy" />
-          </button>
-
-          <div class="submission-card__content admin-image-card__content admin-image-card__content--compact">
-            <div class="submission-card__head admin-image-card__head">
-              <div class="admin-image-card__title-block">
-                <strong class="admin-image-card__title">{{ item.title }}</strong>
-                <div class="submission-meta admin-image-meta-row">
-                  <span>{{ item.contributor_name || '未署名' }}</span>
-                  <span class="image-meta-sep">·</span>
-                  <span>{{ item.uploader_display_name || '未知上传者' }}</span>
-                  <span class="image-meta-sep">·</span>
-                  <span>{{ formatDate(item.published_at || item.created_at, { withTime: true }) }}</span>
-                </div>
-              </div>
-              <span class="status-pill" :class="item.status === 'PUBLISHED' ? 'status-pill--published' : 'status-pill--inactive'">
-                {{ item.status === 'PUBLISHED' ? '显示中' : '已隐藏' }}
-              </span>
-            </div>
-
-            <div class="admin-image-meta-grid">
-              <div class="admin-image-meta-grid__item">
-                <span>Slug</span>
-                <strong>{{ item.slug || '—' }}</strong>
-              </div>
-              <div class="admin-image-meta-grid__item">
-                <span>文件</span>
-                <strong>{{ item.file_size ? formatFileSize(item.file_size) : '未知大小' }}</strong>
-              </div>
-              <div class="admin-image-meta-grid__item">
-                <span>类型</span>
-                <strong>{{ item.mime_type || '—' }}</strong>
-              </div>
-              <div class="admin-image-meta-grid__item">
-                <span>上传者</span>
-                <strong>{{ item.uploader_display_name || '未知上传者' }}</strong>
-              </div>
-            </div>
-
-            <p v-if="item.description" class="muted admin-image-card__desc admin-image-card__desc--compact">{{ item.description }}</p>
-
-            <div class="action-row admin-image-actions admin-image-actions--compact">
-              <mdui-button variant="text" @click="openLightbox(item)">查看大图</mdui-button>
-              <mdui-button
-                v-if="item.status === 'PUBLISHED' && item.slug"
-                variant="text"
-                @click="openDetail(item)"
-              >前台详情</mdui-button>
-              <mdui-button
-                :variant="item.status === 'PUBLISHED' ? 'filled-tonal' : 'filled'"
-                :loading="actionBusyId === item.id && actionType === 'toggle'"
-                :disabled="!!actionBusyId && actionBusyId !== item.id"
-                @click="toggleVisibility(item)"
-              >{{ item.status === 'PUBLISHED' ? '隐藏图片' : '恢复显示' }}</mdui-button>
-              <mdui-button
-                variant="text"
-                class="btn-danger"
-                :loading="actionBusyId === item.id && actionType === 'delete'"
-                :disabled="!!actionBusyId && actionBusyId !== item.id"
-                @click="openDeleteDialog(item)"
-              >删除图片</mdui-button>
-            </div>
+    <div v-else-if="filteredImages.length" class="admin-image-grid">
+      <div
+        v-for="item in filteredImages"
+        :key="item.id"
+        class="admin-image-grid-item"
+        :data-image-slug="item.slug"
+        :data-image-id="item.id"
+      >
+        <div class="admin-image-grid-item__thumb" @click="openLightbox(item)">
+          <img :src="item.image_url" :alt="item.title" loading="lazy" :data-image-slug="item.slug" :data-image-id="item.id" />
+        </div>
+        <div class="admin-image-grid-item__body">
+          <div class="admin-image-grid-item__title">{{ item.title }}</div>
+          <div class="admin-image-grid-item__meta">
+            <span>{{ item.contributor_name || '未署名' }}</span>
+            <span class="image-meta-sep">·</span>
+            <span>{{ formatDate(item.published_at || item.created_at, { withTime: true }) }}</span>
+            <span class="admin-image-grid-item__status" :class="item.status === 'PUBLISHED' ? 'status-pill--published' : 'status-pill--inactive'">
+              {{ item.status === 'PUBLISHED' ? '显示中' : '已隐藏' }}
+            </span>
+          </div>
+          <div class="admin-image-grid-item__actions">
+            <mdui-button variant="text" @click="openLightbox(item)">查看</mdui-button>
+            <mdui-button
+              v-if="item.status === 'PUBLISHED' && item.slug"
+              variant="text"
+              @click="openDetail(item)"
+            >详情</mdui-button>
+            <mdui-button
+              :variant="item.status === 'PUBLISHED' ? 'filled-tonal' : 'filled'"
+              :loading="actionBusyId === item.id && actionType === 'toggle'"
+              :disabled="!!actionBusyId && actionBusyId !== item.id"
+              @click="toggleVisibility(item)"
+            >{{ item.status === 'PUBLISHED' ? '隐藏' : '显示' }}</mdui-button>
+            <mdui-button
+              variant="text"
+              class="btn-danger"
+              :loading="actionBusyId === item.id && actionType === 'delete'"
+              :disabled="!!actionBusyId && actionBusyId !== item.id"
+              @click="openDeleteDialog(item)"
+            >删除</mdui-button>
           </div>
         </div>
-      </mdui-card>
+      </div>
     </div>
 
     <div v-else class="empty-state">当前筛选条件下没有图片。</div>
