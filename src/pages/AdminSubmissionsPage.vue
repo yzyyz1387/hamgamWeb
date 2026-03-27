@@ -92,6 +92,15 @@
                 >驳回</mdui-button>
               </div>
             </template>
+
+            <template v-else-if="item.status === 'PUBLISHED' && item.published_image_slug">
+              <div class="action-row" style="margin-top:10px">
+                <mdui-button variant="filled" @click="goToImage(item.published_image_slug)">
+                  <mdui-icon slot="icon" name="open_in_new--rounded"></mdui-icon>
+                  查看发布页
+                </mdui-button>
+              </div>
+            </template>
           </div>
         </div>
       </mdui-card>
@@ -110,6 +119,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { formatDate } from '@/lib/format'
 import { createSubmissionPreview } from '@/lib/engagement'
 import { getErrorMessage } from '@/lib/errors'
@@ -128,6 +138,7 @@ const statusOptions = [
 ]
 
 const galleryStore = useGalleryStore()
+const router = useRouter()
 
 const submissions = ref([])
 const loading = ref(false)
@@ -146,11 +157,20 @@ async function loadSubmissions() {
   loading.value = true
   try {
     const supabase = requireSupabase()
-    let query = supabase.from('submissions').select('*').order('created_at', { ascending: false })
+    let query = supabase
+      .from('submissions')
+      .select(`
+        *,
+        published_image:images!published_image_id(slug)
+      `)
+      .order('created_at', { ascending: false })
     if (filterStatus.value !== 'ALL') query = query.eq('status', filterStatus.value)
     const { data, error } = await query
     if (error) throw error
-    submissions.value = data || []
+    submissions.value = (data || []).map(item => ({
+      ...item,
+      published_image_slug: item.published_image?.slug || null
+    }))
     for (const item of submissions.value) {
       if (!previewMap[item.id]) loadThumb(item)
     }
@@ -220,5 +240,11 @@ function statusLabel(status) {
 }
 function statusClass(status) {
   return `status-pill--${{ PENDING: 'pending', PUBLISHED: 'published', REJECTED: 'rejected', WITHDRAWN: 'inactive' }[status] || 'pending'}`
+}
+
+function goToImage(slug) {
+  if (slug) {
+    router.push(`/image/${slug}`)
+  }
 }
 </script>
