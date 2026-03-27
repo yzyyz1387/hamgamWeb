@@ -16,6 +16,7 @@
   "dependencies": {
     "@imengyu/vue3-context-menu": "^1.5.4",
     "@supabase/supabase-js": "^2.57.0",
+    "@vercel/analytics": "^2.0.1",
     "dompurify": "^3.2.6",
     "mdui": "^2.1.4",
     "pinia": "^3.0.3",
