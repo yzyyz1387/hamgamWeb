@@ -1,8 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "github": {
-    "productionBranch": "neweb"
-  },
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
