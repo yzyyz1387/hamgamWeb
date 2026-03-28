@@ -1772,6 +1772,7 @@ mdui-icon {
 
 @media (max-width: 768px) {
   .nav-desktop { display: none !important; }
+  .nav-desktop-group { display: none !important; }
   .mobile-menu-btn { display: grid !important; }
   .app-shell__topbar { position: relative; }
   /* 手机端完全隐藏头像触发器，只用汉堡菜单 */
