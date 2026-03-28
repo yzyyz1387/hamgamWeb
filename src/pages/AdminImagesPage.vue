@@ -5,7 +5,11 @@
         <div>
           <div class="eyebrow">图片管理</div>
           <h1>隐藏 / 显示 / 删除图库图片</h1>
-          <p class="muted">仅超级管理员可操作。支持按状态、日期、上传者、贡献者等条件筛选，点击缩略图可灯箱预览。</p>
+          <p class="muted">
+            <template v-if="auth.isSuperAdmin">超级管理员可隐藏、显示、删除图片。</template>
+            <template v-else>审核人员可隐藏、显示图片，删除操作仅限超级管理员。</template>
+            支持按状态、日期、上传者、贡献者等条件筛选，点击缩略图可灯箱预览。
+          </p>
         </div>
         <div class="admin-toolbar-group admin-toolbar-group--dense">
           <div class="form-control admin-filter-field admin-filter-field--sm">
@@ -102,6 +106,7 @@
               @click="toggleVisibility(item)"
             >{{ item.status === 'PUBLISHED' ? '隐藏' : '显示' }}</mdui-button>
             <mdui-button
+              v-if="auth.isSuperAdmin"
               variant="text"
               class="btn-danger"
               :loading="actionBusyId === item.id && actionType === 'delete'"
@@ -168,9 +173,11 @@ import { requireSupabase } from '@/lib/supabase'
 import { normalizeImageRecord } from '@/lib/image'
 import { safeInsertAuditLog } from '@/lib/audit'
 import { useGalleryStore } from '@/stores/gallery'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const galleryStore = useGalleryStore()
+const auth = useAuthStore()
 const DELETE_PHRASE = '我确认删除'
 
 const statusOptions = [
@@ -384,6 +391,17 @@ async function confirmDelete() {
   actionType.value = 'delete'
   try {
     const supabase = requireSupabase()
+
+    const { data: relatedSubmissions } = await supabase
+      .from('submissions')
+      .select('id, uploader_id')
+      .eq('published_image_id', item.id)
+
+    await supabase
+      .from('submissions')
+      .update({ status: 'IMAGE_DELETED' })
+      .eq('published_image_id', item.id)
+
     if (item.storage_bucket && item.storage_path) {
       const { error: storageError } = await supabase.storage
         .from(item.storage_bucket)
@@ -393,6 +411,25 @@ async function confirmDelete() {
 
     const { error } = await supabase.from('images').delete().eq('id', item.id)
     if (error) throw error
+
+    if (relatedSubmissions && relatedSubmissions.length > 0) {
+      const notifications = relatedSubmissions
+        .filter(s => s.uploader_id)
+        .map(s => ({
+          user_id: s.uploader_id,
+          actor_id: auth.user?.id,
+          actor_display_name: auth.displayName,
+          actor_avatar_url: auth.avatarUrl,
+          type: 'IMAGE_DELETED',
+          title: '你的图片已被删除',
+          content: `《${item.title}》已被管理员删除。`,
+          link: '/my-submissions',
+          metadata: { image_id: item.id, submission_id: s.id },
+        }))
+      if (notifications.length > 0) {
+        await supabase.from('notifications').insert(notifications)
+      }
+    }
 
     images.value = images.value.filter((entry) => entry.id !== item.id)
     summary.total = Math.max(0, summary.total - 1)

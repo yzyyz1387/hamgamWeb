@@ -46,28 +46,45 @@
                 </div>
                 <div class="user-menu__divider"></div>
                 <button class="user-menu__item" @click="navigate('/profile')">个人资料</button>
+                <button class="user-menu__item" @click="navigate('/my-submissions')">我的投稿</button>
                 <button class="user-menu__item" @click="navigate('/notifications')">
                   <span>通知中心</span>
                   <span v-if="auth.unreadNotifications" class="inline-badge inline-badge--end">{{ auth.unreadNotifications }}</span>
                 </button>
                 <template v-if="auth.canModerate">
                   <div class="user-menu__divider"></div>
-                  <button class="user-menu__item" @click="navigate('/admin')">
-                    <span>后台总览</span>
-                    <span v-if="adminStore.pendingTotal" class="inline-badge inline-badge--end">{{ adminStore.pendingTotal }}</span>
-                  </button>
-                  <button class="user-menu__item" @click="navigate('/admin/submissions')">
-                    <span>投稿审核</span>
-                    <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
-                  </button>
-                  <button v-if="auth.isSuperAdmin" class="user-menu__item" @click="navigate('/admin/users')">用户管理</button>
-                  <button v-if="auth.isSuperAdmin" class="user-menu__item" @click="navigate('/admin/images')">图片管理</button>
-                  <button v-if="auth.isSuperAdmin" class="user-menu__item" @click="navigate('/admin/announcements')">公告管理</button>
-                  <button v-if="auth.isSuperAdmin" class="user-menu__item" @click="navigate('/admin/friend-links')">友情链接</button>
-                  <button v-if="auth.isSuperAdmin" class="user-menu__item" @click="navigate('/admin/callsign')">
-                    <span>呼号审核</span>
-                    <span v-if="adminStore.pendingCallsigns" class="inline-badge inline-badge--end">{{ adminStore.pendingCallsigns }}</span>
-                  </button>
+                  <template v-if="auth.isSuperAdmin">
+                    <div class="user-menu__submenu">
+                      <button class="user-menu__item user-menu__submenu-trigger" @click="adminMenuOpen = !adminMenuOpen">
+                        <span>后台管理</span>
+                        <span v-if="adminStore.pendingTotal" class="inline-badge inline-badge--end">{{ adminStore.pendingTotal }}</span>
+                        <span class="user-menu__submenu-caret" :class="{ 'user-menu__submenu-caret--open': adminMenuOpen }">▾</span>
+                      </button>
+                      <div v-if="adminMenuOpen" class="user-menu__submenu-items">
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin')">
+                          <span>后台总览</span>
+                        </button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/submissions')">
+                          <span>投稿审核</span>
+                          <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
+                        </button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/users')">用户管理</button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/images')">图片管理</button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/announcements')">公告管理</button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/friend-links')">友情链接</button>
+                        <button class="user-menu__item user-menu__item--sub" @click="navigate('/admin/callsign')">
+                          <span>呼号审核</span>
+                          <span v-if="adminStore.pendingCallsigns" class="inline-badge inline-badge--end">{{ adminStore.pendingCallsigns }}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </template>
+                  <template v-else>
+                    <button class="user-menu__item" @click="navigate('/admin/submissions')">
+                      <span>投稿审核</span>
+                      <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
+                    </button>
+                  </template>
                 </template>
                 <div class="user-menu__divider"></div>
                 <button class="user-menu__item user-menu__item--danger" @click="signOut">退出登录</button>
@@ -95,28 +112,38 @@
               <span v-if="auth.unreadNotifications" class="inline-badge inline-badge--end">{{ auth.unreadNotifications }}</span>
             </button>
             <button class="mobile-nav-item" @click="mobileGoTo('/profile')">个人资料</button>
+            <button class="mobile-nav-item" @click="mobileGoTo('/my-submissions')">我的投稿</button>
             <template v-if="auth.canModerate">
-              <button class="mobile-nav-item mobile-nav-item--with-badge" @click="mobileGoTo('/admin')">
-                <span>后台总览</span>
-                <span v-if="adminStore.pendingTotal" class="inline-badge inline-badge--end">{{ adminStore.pendingTotal }}</span>
-              </button>
-              <button class="mobile-nav-item mobile-nav-item--with-badge" @click="mobileGoTo('/admin/submissions')">
-                <span>投稿审核</span>
-                <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
-              </button>
-              <button
-                v-if="auth.isSuperAdmin"
-                class="mobile-nav-item"
-                @click="mobileGoTo('/admin/images')"
-              >图片管理</button>
-              <button
-                v-if="auth.isSuperAdmin"
-                class="mobile-nav-item mobile-nav-item--with-badge"
-                @click="mobileGoTo('/admin/callsign')"
-              >
-                <span>呼号审核</span>
-                <span v-if="adminStore.pendingCallsigns" class="inline-badge inline-badge--end">{{ adminStore.pendingCallsigns }}</span>
-              </button>
+              <template v-if="auth.isSuperAdmin">
+                <div class="mobile-nav-submenu">
+                  <button class="mobile-nav-item mobile-nav-submenu__trigger" @click="mobileAdminMenuOpen = !mobileAdminMenuOpen">
+                    <span>后台管理</span>
+                    <span v-if="adminStore.pendingTotal" class="inline-badge inline-badge--end">{{ adminStore.pendingTotal }}</span>
+                    <span class="mobile-nav-submenu__caret" :class="{ 'mobile-nav-submenu__caret--open': mobileAdminMenuOpen }">▾</span>
+                  </button>
+                  <div v-if="mobileAdminMenuOpen" class="mobile-nav-submenu__items">
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin')">后台总览</button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/submissions')">
+                      <span>投稿审核</span>
+                      <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
+                    </button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/users')">用户管理</button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/images')">图片管理</button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/announcements')">公告管理</button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/friend-links')">友情链接</button>
+                    <button class="mobile-nav-item mobile-nav-item--sub" @click="mobileGoTo('/admin/callsign')">
+                      <span>呼号审核</span>
+                      <span v-if="adminStore.pendingCallsigns" class="inline-badge inline-badge--end">{{ adminStore.pendingCallsigns }}</span>
+                    </button>
+                  </div>
+                </div>
+              </template>
+              <template v-else>
+                <button class="mobile-nav-item mobile-nav-item--with-badge" @click="mobileGoTo('/admin/submissions')">
+                  <span>投稿审核</span>
+                  <span v-if="adminStore.pendingSubmissions" class="inline-badge inline-badge--end">{{ adminStore.pendingSubmissions }}</span>
+                </button>
+              </template>
             </template>
             <button class="mobile-nav-item mobile-nav-item--danger" @click="mobileSignOut">退出登录</button>
           </template>
@@ -161,6 +188,8 @@ const adminStore = useAdminStore()
 const menuOpen = ref(false)
 const menuRef = ref(null)
 const mobileMenuOpen = ref(false)
+const adminMenuOpen = ref(false)
+const mobileAdminMenuOpen = ref(false)
 const { showContextMenu } = useContextMenu()
 
 const adminBadgeVisible = computed(() => auth.canModerate && adminStore.pendingTotal > 0)
@@ -253,3 +282,67 @@ function openLink(link) {
   router.push(link)
 }
 </script>
+
+<style scoped>
+.user-menu__submenu {
+  width: 100%;
+}
+
+.user-menu__submenu-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-menu__submenu-caret {
+  font-size: 10px;
+  color: #8a9aaa;
+  transition: transform 0.2s;
+}
+
+.user-menu__submenu-caret--open {
+  transform: rotate(180deg);
+}
+
+.user-menu__submenu-items {
+  background: rgba(17, 24, 39, 0.02);
+  border-radius: 8px;
+  margin: 4px 0;
+  padding: 4px 0;
+}
+
+.user-menu__item--sub {
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.mobile-nav-submenu {
+  width: 100%;
+}
+
+.mobile-nav-submenu__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-nav-submenu__caret {
+  font-size: 12px;
+  color: #8a9aaa;
+  transition: transform 0.2s;
+}
+
+.mobile-nav-submenu__caret--open {
+  transform: rotate(180deg);
+}
+
+.mobile-nav-submenu__items {
+  background: rgba(17, 24, 39, 0.03);
+  padding: 4px 0;
+}
+
+.mobile-nav-item--sub {
+  padding-left: 24px;
+  font-size: 14px;
+}
+</style>

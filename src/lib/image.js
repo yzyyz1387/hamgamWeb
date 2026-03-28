@@ -28,5 +28,10 @@ export function normalizeImageRecord(record) {
     contributor_name: record.contributor_name || record.uploader_display_name || '佚名',
     sort_at:
       record.legacy_updated_at || record.published_at || record.created_at || record.updated_at,
+    edit_status: record.edit_status || 'NONE',
+    edit_reason: record.edit_reason || null,
+    original_image_url: record.original_image_url || null,
+    edit_requested_at: record.edit_requested_at || null,
+    edit_requested_by: record.edit_requested_by || null,
   }
 }

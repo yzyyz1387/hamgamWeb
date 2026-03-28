@@ -9,6 +9,7 @@ import RegisterPage from '@/pages/RegisterPage.vue'
 import ProfilePage from '@/pages/ProfilePage.vue'
 import SubmitPage from '@/pages/SubmitPage.vue'
 import NotificationsPage from '@/pages/NotificationsPage.vue'
+import MySubmissionsPage from '@/pages/MySubmissionsPage.vue'
 import AdminDashboardPage from '@/pages/AdminDashboardPage.vue'
 import AdminSubmissionsPage from '@/pages/AdminSubmissionsPage.vue'
 import AdminUsersPage from '@/pages/AdminUsersPage.vue'
@@ -23,6 +24,7 @@ import CallsignApplyPage from '@/pages/CallsignApplyPage.vue'
 import AdminCallsignPage from '@/pages/AdminCallsignPage.vue'
 import AdminImagesPage from '@/pages/AdminImagesPage.vue'
 import TeamPage from '@/pages/TeamPage.vue'
+import AdminHashProcessorPage from '@/pages/AdminHashProcessorPage.vue'
 
 const routes = [
   { path: '/', name: 'home', component: HomePage },
@@ -36,6 +38,12 @@ const routes = [
     path: '/notifications',
     name: 'notifications',
     component: NotificationsPage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/my-submissions',
+    name: 'my-submissions',
+    component: MySubmissionsPage,
     meta: { requiresAuth: true },
   },
   {
@@ -76,6 +84,12 @@ const routes = [
   { path: '/admin/callsign', name: 'admin-callsign', component: AdminCallsignPage, meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] } },
   { path: '/admin/images', name: 'admin-images', component: AdminImagesPage, meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] } },
   { path: '/team', name: 'team', component: TeamPage },
+  {
+    path: '/admin/hash-processor',
+    name: 'admin-hash-processor',
+    component: AdminHashProcessorPage,
+    meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] },
+  },
   {
     path: '/:legacyPath(.*)*',
     name: 'legacy-redirect',

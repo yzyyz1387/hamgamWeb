@@ -13,9 +13,14 @@ const ACTION_LABELS = {
   'profile.updated': '更新了个人资料',
   'profile.password_changed': '更新了账户密码',
   'notification.broadcast': '广播了系统通知',
+  'notification.sent': '发送了通知',
+  'notification.read': '阅读了通知',
   'image.hidden': '隐藏了图片',
   'image.shown': '恢复显示图片',
   'image.deleted': '删除了图片',
+  'image.edit_requested': '请求编辑图片',
+  'image.edit_approved': '批准了图片编辑',
+  'image.edit_rejected': '驳回了图片编辑',
   'callsign.approved': '通过了呼号认证',
   'callsign.rejected': '驳回了呼号认证',
   'comment.created': '发表了评论',
@@ -33,9 +38,14 @@ const ACTION_LEVEL = {
   'profile.updated': 'info',
   'profile.password_changed': 'warn',
   'notification.broadcast': 'info',
+  'notification.sent': 'info',
+  'notification.read': 'info',
   'image.hidden': 'warn',
   'image.shown': 'success',
   'image.deleted': 'error',
+  'image.edit_requested': 'info',
+  'image.edit_approved': 'success',
+  'image.edit_rejected': 'warn',
   'callsign.approved': 'success',
   'callsign.rejected': 'warn',
   'comment.created': 'info',
@@ -196,6 +206,35 @@ export function formatAuditLog(log, nickMap = new Map()) {
     case 'reaction.removed':
       description = '移除了反应'
       extra = d.emoji || null
+      break
+
+    case 'notification.sent':
+      description = '发送了通知'
+      subject = resolveUser(d.target_user_id)
+      extra = d.notification_title || null
+      break
+
+    case 'notification.read':
+      description = '阅读了通知'
+      extra = d.notification_title || null
+      if (d.read_type) {
+        extra = `${extra || ''}（${d.read_type === 'click' ? '点击阅读' : '一键已读'}）`
+      }
+      break
+
+    case 'image.edit_requested':
+      description = '请求编辑图片'
+      extra = d.edit_reason || null
+      break
+
+    case 'image.edit_approved':
+      description = '批准了图片编辑'
+      extra = d.image_title ? `《${d.image_title}》` : null
+      break
+
+    case 'image.edit_rejected':
+      description = '驳回了图片编辑'
+      extra = d.edit_reason || null
       break
 
     default:

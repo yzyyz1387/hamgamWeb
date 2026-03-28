@@ -60,7 +60,20 @@
         <div class="action-row" style="margin-top: 14px">
           <mdui-button variant="filled" @click="copyShareLink">复制链接</mdui-button>
           <mdui-button variant="filled-tonal" @click="router.push('/random')">随机一张</mdui-button>
+          <mdui-button v-if="canEditImage" variant="outlined" @click="showEditDialog = true">
+            <mdui-icon slot="icon" name="edit--rounded"></mdui-icon>
+            编辑
+          </mdui-button>
           <mdui-button variant="text" @click="router.push('/')">返回主页</mdui-button>
+        </div>
+
+        <div v-if="image.edit_status === 'PENDING'" class="edit-status-banner">
+          <mdui-icon name="pending--rounded" style="font-size: 18px"></mdui-icon>
+          <span>此图片修改正在审核中</span>
+        </div>
+        <div v-else-if="image.edit_status === 'REJECTED'" class="edit-status-banner edit-status-banner--rejected">
+          <mdui-icon name="error--rounded" style="font-size: 18px"></mdui-icon>
+          <span>修改被驳回：{{ image.edit_reason || '无原因' }}</span>
         </div>
       </div>
 
@@ -153,11 +166,59 @@
       <p>没有找到这张图片，可能链接已失效。</p>
       <mdui-button variant="filled" @click="router.push('/')">返回主页</mdui-button>
     </div>
+
+    <mdui-dialog :open="showEditDialog" @closed="showEditDialog = false">
+      <div class="dialog-content">
+        <h3>编辑图片信息</h3>
+        <div class="form-control" style="margin-top: 12px">
+          <AppTextField
+            v-model="editTitle"
+            label="标题"
+            placeholder="请输入图片标题"
+            :maxlength="100"
+            counter
+            trim
+          ></AppTextField>
+        </div>
+        <div class="form-control" style="margin-top: 12px">
+          <AppTextField
+            v-model="editDescription"
+            label="描述"
+            placeholder="请输入图片描述（可选）"
+            :maxlength="500"
+            :rows="3"
+            autosize
+            counter
+            trim
+          ></AppTextField>
+        </div>
+        <div class="form-control" style="margin-top: 12px">
+          <label class="file-upload-label">
+            <input type="file" accept="image/*" @change="handleEditFileChange" style="display: none" />
+            <mdui-button variant="outlined" type="button">
+              <mdui-icon slot="icon" name="upload--rounded"></mdui-icon>
+              更换图片（可选）
+            </mdui-button>
+          </label>
+          <span v-if="editFileName" style="margin-left: 8px; font-size: 13px">{{ editFileName }}</span>
+        </div>
+        <div v-if="editPreviewUrl" class="edit-preview">
+          <img :src="editPreviewUrl" alt="预览" />
+        </div>
+        <p class="muted" style="margin-top: 12px; font-size: 13px">
+          提交修改后需要重新审核，审核通过后才会更新。
+        </p>
+      </div>
+      <mdui-button slot="action" @click="showEditDialog = false">取消</mdui-button>
+      <mdui-button slot="action" variant="filled" :loading="submittingEdit" :disabled="!editTitle.trim()" @click="submitEdit">
+        提交修改
+      </mdui-button>
+    </mdui-dialog>
   </section>
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { copyText, formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
@@ -170,6 +231,8 @@ import {
 } from '@/lib/engagement'
 import { resolvePublicUserUid } from '@/lib/publicProfiles'
 import { toUserProfilePath } from '@/lib/uid'
+import { requireSupabase } from '@/lib/supabase'
+import { safeInsertAuditLog } from '@/lib/audit'
 import { useAuthStore } from '@/stores/auth'
 import { useGalleryStore } from '@/stores/gallery'
 import AppTextField from '@/components/AppTextField.vue'
@@ -198,6 +261,13 @@ const insertImageUrl = ref('')
 const insertPreviewImage = ref(null)
 const insertError = ref('')
 const replyingTo = ref(null)
+const showEditDialog = ref(false)
+const editTitle = ref('')
+const editDescription = ref('')
+const editFile = ref(null)
+const editFileName = ref('')
+const editPreviewUrl = ref('')
+const submittingEdit = ref(false)
 let commentCooldownTimer = null
 
 function startCommentCooldown(seconds = 30) {
@@ -241,6 +311,26 @@ async function loadPage() {
 
 onMounted(loadPage)
 watch(() => route.params.slug, loadPage)
+watch(() => route.query.edit, (edit) => {
+  if (edit === 'true' && canEditImage.value) {
+    showEditDialog.value = true
+  }
+})
+
+const canEditImage = computed(() => {
+  if (!auth.user || !image.value) return false
+  return image.value.uploader_id === auth.user.id && image.value.edit_status !== 'PENDING'
+})
+
+watch(showEditDialog, (open) => {
+  if (open && image.value) {
+    editTitle.value = image.value.title
+    editDescription.value = image.value.description || ''
+    editFile.value = null
+    editFileName.value = ''
+    editPreviewUrl.value = ''
+  }
+})
 watch(
   () => auth.user?.id,
   async () => {
@@ -374,4 +464,310 @@ function confirmInsertImage() {
   insertPreviewImage.value = null
   showToast('图片已插入')
 }
+
+function handleEditFileChange(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  editFile.value = file
+  editFileName.value = file.name
+  editPreviewUrl.value = URL.createObjectURL(file)
+}
+
+async function submitEdit() {
+  if (!image.value || !auth.user) return
+  const title = editTitle.value.trim()
+  if (!title) {
+    showToast('标题不能为空')
+    return
+  }
+  
+  submittingEdit.value = true
+  try {
+    const supabase = requireSupabase()
+    
+    let newImageUrl = image.value.image_url
+    let newStoragePath = null
+    let newMimeType = image.value.mime_type
+    let newFileSize = 0
+    let newFileName = image.value.original_filename || 'edited_image.jpg'
+    
+    if (editFile.value) {
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('submission-images')
+        .upload(`${auth.user.id}/${Date.now()}_${editFile.value.name}`, editFile.value)
+      
+      if (uploadError) throw uploadError
+      
+      const { data: urlData } = supabase.storage.from('submission-images').getPublicUrl(uploadData.path)
+      newImageUrl = urlData.publicUrl
+      newStoragePath = uploadData.path
+      newMimeType = editFile.value.type
+      newFileSize = editFile.value.size
+      newFileName = editFile.value.name
+    }
+    
+    const hasChanges = title !== image.value.title || 
+                       editDescription.value.trim() !== (image.value.description || '') ||
+                       newStoragePath !== null
+    
+    if (!hasChanges) {
+      showToast('没有检测到修改')
+      return
+    }
+    
+    const { error } = await supabase
+      .from('submissions')
+      .insert({
+        title,
+        description: editDescription.value.trim() || '',
+        original_filename: newFileName,
+        storage_bucket: newStoragePath ? 'submission-images' : null,
+        storage_path: newStoragePath,
+        mime_type: newMimeType,
+        file_size: newFileSize,
+        uploader_id: auth.user.id,
+        uploader_display_name: auth.displayName,
+        status: 'PENDING',
+        metadata: {
+          edit_for_image_id: image.value.id,
+          edit_for_image_slug: image.value.slug,
+          original_image_url: image.value.image_url,
+          original_title: image.value.title,
+          original_description: image.value.description,
+          has_new_file: newStoragePath !== null,
+        },
+      })
+      .select()
+      .single()
+    
+    if (error) throw error
+    
+    await safeInsertAuditLog({
+      action: 'image.edit_requested',
+      entityType: 'image',
+      entityId: image.value.id,
+      details: {
+        image_title: title,
+        image_slug: image.value.slug,
+      },
+    })
+    
+    showToast('修改已提交，等待审核')
+    showEditDialog.value = false
+    await loadPage()
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  } finally {
+    submittingEdit.value = false
+  }
+}
 </script>
+
+<style scoped>
+.image-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.image-viewer {
+  padding: 22px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.image-viewer__frame {
+  flex-shrink: 0;
+  background: rgba(17, 24, 39, 0.03);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 380px;
+}
+
+.image-viewer__frame img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.image-reactions-bar {
+  flex-shrink: 0;
+  padding-top: 12px;
+}
+
+.image-viewer .section-card__header {
+  flex-shrink: 0;
+}
+
+.image-meta-row {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #5f6b76;
+}
+
+.image-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.image-meta-sep {
+  color: #c0c8d0;
+}
+
+.image-viewer .action-row {
+  flex-shrink: 0;
+}
+
+.edit-status-banner {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 10px;
+  font-size: 13px;
+  color: #b45309;
+}
+
+.edit-status-banner--rejected {
+  background: rgba(220, 38, 38, 0.1);
+  color: #b91c1c;
+}
+
+.side-panel {
+  padding: 22px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 18px 40px rgba(17, 24, 39, 0.08);
+}
+
+.contributor-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: #6750a4;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+.contributor-link:hover {
+  color: #7965af;
+}
+
+.comment-compose-grid {
+  margin-bottom: 12px;
+}
+
+.reply-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(103, 80, 164, 0.08);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.reply-cancel-btn {
+  background: none;
+  border: none;
+  color: #6750a4;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.comment-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  align-items: center;
+}
+
+.insert-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(17, 24, 39, 0.03);
+  border-radius: 10px;
+}
+
+.insert-preview img {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.insert-preview span {
+  font-size: 13px;
+  color: #374151;
+}
+
+.insert-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  border-radius: 8px;
+  font-size: 13px;
+  color: #b91c1c;
+}
+
+.insert-help-content {
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.edit-preview {
+  margin-top: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(17, 24, 39, 0.03);
+}
+
+.edit-preview img {
+  width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+@media (max-width: 768px) {
+  .image-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  .image-viewer {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  
+  .image-viewer__frame {
+    height: 300px;
+  }
+}
+</style>

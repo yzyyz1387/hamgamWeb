@@ -8,7 +8,9 @@
             <h2>{{ notifications.length }} 条通知</h2>
             <p class="muted">点击通知查看详情，支持单条已读和一键全部已读。</p>
           </div>
-          <mdui-button variant="text" @click="markAllRead">全部已读</mdui-button>
+          <div class="notification-header-actions">
+            <mdui-button variant="text" @click="markAllRead">全部已读</mdui-button>
+          </div>
         </div>
 
         <div v-if="loading" class="empty-state">
@@ -63,7 +65,7 @@
             </div>
           </div>
 
-          <div class="rich-text" v-html="textToHtml(activeNotification.content)"></div>
+          <div class="rich-text" v-html="renderNotificationContent(activeNotification.content)"></div>
 
           <div v-if="activeNotification.metadata?.submission_title" class="notification-submission-info">
             <strong>投稿内容：</strong>
@@ -89,15 +91,18 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatDate, textToHtml, timeAgo } from '@/lib/format'
+import { formatDate, textToHtml, timeAgo, sanitizeHtml } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 import { normalizeSafeLink, isExternalLink } from '@/lib/safeLink'
 import { showToast } from '@/lib/toast'
 import { requireSupabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
+import { useGalleryStore } from '@/stores/gallery'
+import { safeInsertAuditLog } from '@/lib/audit'
 
 const router = useRouter()
 const auth = useAuthStore()
+const galleryStore = useGalleryStore()
 
 const notifications = ref([])
 const loading = ref(false)
@@ -118,11 +123,17 @@ async function loadNotifications() {
     const supabase = requireSupabase()
     const { data, error } = await supabase
       .from('notifications')
-      .select('*')
+      .select(`
+        *,
+        actor:profiles!actor_id(uid)
+      `)
       .order('created_at', { ascending: false })
       .limit(100)
     if (error) throw error
-    notifications.value = data || []
+    notifications.value = (data || []).map(n => ({
+      ...n,
+      actor_uid: n.actor?.uid || null
+    }))
     if (!selectedId.value && notifications.value[0]) {
       await selectNotification(notifications.value[0])
     }
@@ -143,7 +154,18 @@ async function selectNotification(item) {
     })
     if (error) throw error
     item.is_read = true
+    item.read_at = new Date().toISOString()
+    item.read_type = 'click'
     await auth.loadUnreadNotifications()
+    await safeInsertAuditLog({
+      action: 'notification.read',
+      entityType: 'notification',
+      entityId: item.id,
+      details: {
+        notification_title: item.title,
+        read_type: 'click',
+      },
+    })
   } catch (error) {
     showToast(getErrorMessage(error))
   }
@@ -154,9 +176,26 @@ async function markAllRead() {
     const supabase = requireSupabase()
     const { error } = await supabase.rpc('mark_all_notifications_read')
     if (error) throw error
-    notifications.value = notifications.value.map((item) => ({ ...item, is_read: true }))
+    const unreadItems = notifications.value.filter((item) => !item.is_read)
+    notifications.value = notifications.value.map((item) => ({ 
+      ...item, 
+      is_read: true, 
+      read_at: new Date().toISOString(),
+      read_type: 'bulk',
+    }))
     await auth.loadUnreadNotifications()
     showToast('全部通知已标记为已读')
+    for (const item of unreadItems) {
+      await safeInsertAuditLog({
+        action: 'notification.read',
+        entityType: 'notification',
+        entityId: item.id,
+        details: {
+          notification_title: item.title,
+          read_type: 'bulk',
+        },
+      })
+    }
   } catch (error) {
     showToast(getErrorMessage(error))
   }
@@ -177,14 +216,33 @@ function openLink() {
 }
 
 function goActor(item) {
-  if (item.actor_id) {
-    router.push(`/user/${item.actor_id}`)
+  if (item.actor_uid) {
+    router.push(`/user/H${String(item.actor_uid).padStart(3, '0')}`)
   }
 }
 
 function goSubmission(item) {
   if (item.link) {
     router.push(item.link)
+  }
+}
+
+function renderNotificationContent(content) {
+  if (!content) return ''
+  let html = content.replace(/\n/g, '<br/>')
+  html = html.replace(/\[img:([a-zA-Z0-9-]+)\]/g, (match, slug) => {
+    const img = galleryStore.images.find(i => i.slug === slug)
+    if (img) {
+      return `<img class="notification-inline-image" src="${img.image_url}" alt="${img.title}" style="max-width:100%;max-height:300px;border-radius:12px;margin:8px 0;cursor:zoom-in" @click="openImage('${img.image_url}')" />`
+    }
+    return `<span class="notification-image-placeholder" style="color:#8a9aaa;font-size:12px">[图片:${slug}]</span>`
+  })
+  return sanitizeHtml(html, { ADD_ATTR: ['style', '@click'] })
+}
+
+function openImage(url) {
+  if (url) {
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -199,6 +257,7 @@ function typeLabel(type) {
       ANNOUNCEMENT: '管理公告',
       ROLE_CHANGED: '账号变更',
       ACCOUNT_UPDATED: '账户更新',
+      IMAGE_DELETED: '图片删除',
     }[type] || type
   )
 }
@@ -214,7 +273,70 @@ function typeClass(type) {
       ANNOUNCEMENT: 'announcement',
       ROLE_CHANGED: 'role',
       ACCOUNT_UPDATED: 'account',
+      IMAGE_DELETED: 'deleted',
     }[type] || 'default'
   )
+}
+
+async function sendNotificationToUser() {
+  const uidInput = sendTargetUid.value.trim()
+  const title = sendNotificationTitle.value.trim()
+  const content = sendNotificationContent.value.trim()
+  
+  if (!uidInput || !title || !content) return
+  
+  sendingNotification.value = true
+  try {
+    const supabase = requireSupabase()
+    
+    const targetUid = parsePublicUid(uidInput)
+    if (!targetUid) {
+      showToast('无效的用户ID格式')
+      return
+    }
+    
+    const { data: targetUser, error: userError } = await supabase
+      .from('user_profiles')
+      .select('user_id, nickname')
+      .eq('uid', targetUid)
+      .single()
+    
+    if (userError || !targetUser) {
+      showToast('找不到该用户')
+      return
+    }
+    
+    const { error } = await supabase.from('notifications').insert({
+      user_id: targetUser.user_id,
+      title,
+      content,
+      type: 'SYSTEM',
+      actor_id: auth.user.id,
+      actor_display_name: auth.displayName,
+    })
+    
+    if (error) throw error
+    
+    await safeInsertAuditLog({
+      action: 'notification.sent',
+      entityType: 'user',
+      entityId: targetUser.user_id,
+      details: {
+        target_user_id: targetUser.user_id,
+        target_user_name: targetUser.nickname,
+        notification_title: title,
+      },
+    })
+    
+    showToast('通知已发送')
+    showSendNotification.value = false
+    sendTargetUid.value = ''
+    sendNotificationTitle.value = ''
+    sendNotificationContent.value = ''
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  } finally {
+    sendingNotification.value = false
+  }
 }
 </script>

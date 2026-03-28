@@ -35,3 +35,10 @@ edge
 
 # Syntax check cache
 .syntax_check/
+
+# Supabase CLI temp files
+supabase/.temp/
+
+# Test scripts with hardcoded keys
+scripts/test-distance.cjs
+scripts/process-hashes.js

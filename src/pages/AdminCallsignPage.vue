@@ -52,7 +52,12 @@
             </a>
           </template>
           <template v-else>
-            <img :src="previewUrls[app.id]" alt="证明文件" style="max-width:100%;max-height:400px;border-radius:12px;object-fit:contain" />
+            <img 
+              :src="previewUrls[app.id]" 
+              alt="证明文件" 
+              style="max-width:100%;max-height:400px;border-radius:12px;object-fit:contain;cursor:zoom-in" 
+              @click="openLightbox(previewUrls[app.id])"
+            />
           </template>
         </div>
 
@@ -77,6 +82,13 @@
     </div>
 
     <div v-else class="empty-state">当前筛选条件下没有申请。</div>
+
+    <VueEasyLightbox
+      :visible="lightboxVisible"
+      :imgs="lightboxImages"
+      :index="lightboxIndex"
+      @hide="lightboxVisible = false"
+    />
   </section>
 </template>
 
@@ -86,8 +98,12 @@ import { formatDate } from '@/lib/format'
 import { getErrorMessage } from '@/lib/errors'
 import { showToast } from '@/lib/toast'
 import { requireSupabase } from '@/lib/supabase'
+import { useLightbox } from '@/composables/useLightbox'
 import AppSelect from '@/components/form/AppSelect.vue'
 import AppTextField from '@/components/form/AppTextField.vue'
+import VueEasyLightbox from 'vue-easy-lightbox'
+
+const { lightboxVisible, lightboxImages, lightboxIndex, openLightbox } = useLightbox()
 
 const statusOptions = [
   { label: '全部', value: 'ALL' },

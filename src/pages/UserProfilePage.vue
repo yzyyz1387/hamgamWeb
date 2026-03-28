@@ -98,6 +98,13 @@
                 <span>网格</span>
               </div>
             </div>
+
+            <div v-if="auth.isSuperAdmin && profile.id !== auth.user?.id" class="admin-actions-row">
+              <mdui-button variant="outlined" @click="showSendNotification = true">
+                <mdui-icon slot="icon" name="notifications_active--rounded"></mdui-icon>
+                发送通知
+              </mdui-button>
+            </div>
           </div>
         </div>
       </mdui-card>
@@ -154,6 +161,38 @@
       </div>
 
       <GridMapPreviewDialog :open="gridPreviewOpen" :grid="profile?.grid_locator" @close="gridPreviewOpen = false" />
+
+      <mdui-dialog :open="showSendNotification" @closed="showSendNotification = false">
+        <div class="dialog-content">
+          <h3>向 {{ profile?.nickname }} 发送通知</h3>
+          <div class="form-control" style="margin-top: 12px">
+            <AppTextField
+              v-model="notificationTitle"
+              label="通知标题"
+              placeholder="请输入通知标题"
+              :maxlength="100"
+              counter
+              trim
+            ></AppTextField>
+          </div>
+          <div class="form-control" style="margin-top: 12px">
+            <AppTextField
+              v-model="notificationContent"
+              label="通知内容"
+              placeholder="请输入通知内容"
+              :maxlength="1000"
+              :rows="4"
+              autosize
+              counter
+              trim
+            ></AppTextField>
+          </div>
+        </div>
+        <mdui-button slot="action" @click="showSendNotification = false">取消</mdui-button>
+        <mdui-button slot="action" variant="filled" :loading="sendingNotification" :disabled="!notificationTitle.trim() || !notificationContent.trim()" @click="sendNotification">
+          发送
+        </mdui-button>
+      </mdui-dialog>
     </template>
 
     <div v-else class="empty-state">
@@ -174,15 +213,23 @@ import { requireSupabase } from '@/lib/supabase'
 import { fetchPublicProfileByUid } from '@/lib/publicProfiles'
 import { formatPublicUid, parsePublicUid, toUserProfilePath } from '@/lib/uid'
 import { normalizeImageRecord } from '@/lib/image'
+import { safeInsertAuditLog } from '@/lib/audit'
+import { useAuthStore } from '@/stores/auth'
 import GalleryCard from '@/components/GalleryCard.vue'
+import AppTextField from '@/components/form/AppTextField.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 const loading = ref(false)
 const profile = ref(null)
 const images = ref([])
 const gridPreviewOpen = ref(false)
+const showSendNotification = ref(false)
+const notificationTitle = ref('')
+const notificationContent = ref('')
+const sendingNotification = ref(false)
 
 async function loadUser() {
   const uid = route.params.uid
@@ -271,5 +318,46 @@ function certIconName(icon) {
     workspace_premium: 'school--rounded',
   }
   return map[icon] || 'beenhere--rounded'
+}
+
+async function sendNotification() {
+  if (!profile.value || !auth.user) return
+  const title = notificationTitle.value.trim()
+  const content = notificationContent.value.trim()
+  if (!title || !content) return
+  
+  sendingNotification.value = true
+  try {
+    const supabase = requireSupabase()
+    const { error } = await supabase.from('notifications').insert({
+      user_id: profile.value.id,
+      title,
+      content,
+      type: 'SYSTEM',
+      actor_id: auth.user.id,
+      actor_display_name: auth.displayName,
+    })
+    if (error) throw error
+    
+    await safeInsertAuditLog({
+      action: 'notification.sent',
+      entityType: 'user',
+      entityId: profile.value.id,
+      details: {
+        target_user_id: profile.value.id,
+        target_user_name: profile.value.nickname,
+        notification_title: title,
+      },
+    })
+    
+    showToast('通知已发送')
+    showSendNotification.value = false
+    notificationTitle.value = ''
+    notificationContent.value = ''
+  } catch (error) {
+    showToast(getErrorMessage(error))
+  } finally {
+    sendingNotification.value = false
+  }
 }
 </script>

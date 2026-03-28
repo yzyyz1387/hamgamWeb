@@ -20,7 +20,7 @@ begin
     create type public.image_status as enum ('PUBLISHED', 'ARCHIVED');
   end if;
   if not exists (select 1 from pg_type where typname = 'submission_status') then
-    create type public.submission_status as enum ('PENDING', 'PUBLISHED', 'REJECTED', 'WITHDRAWN');
+    create type public.submission_status as enum ('PENDING', 'PUBLISHED', 'REJECTED', 'WITHDRAWN', 'IMAGE_DELETED');
   end if;
   if not exists (select 1 from pg_type where typname = 'comment_status') then
     create type public.comment_status as enum ('VISIBLE', 'HIDDEN');
@@ -36,7 +36,8 @@ begin
       'SUBMISSION_REJECTED',
       'COMMENT_CREATED',
       'ANNOUNCEMENT',
-      'ROLE_CHANGED'
+      'ROLE_CHANGED',
+      'IMAGE_DELETED'
     );
   end if;
 end
@@ -91,9 +92,9 @@ create table if not exists public.submissions (
   title text not null,
   description text not null default '',
   contributor_name text,
-  original_filename text not null,
-  storage_bucket text not null default 'submission-images',
-  storage_path text not null unique,
+  original_filename text,
+  storage_bucket text default 'submission-images',
+  storage_path text unique,
   mime_type text,
   file_size bigint,
   uploader_id uuid not null references public.profiles(id) on delete cascade,
@@ -106,7 +107,12 @@ create table if not exists public.submissions (
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
-  constraint submissions_title_length check (char_length(title) between 1 and 120)
+  constraint submissions_title_length check (char_length(title) between 1 and 120),
+  constraint check_storage_path_requirement check (
+    (metadata->>'edit_for_image_id' is not null)
+    or
+    (storage_path is not null and storage_bucket is not null)
+  )
 );
 
 create table if not exists public.comments (

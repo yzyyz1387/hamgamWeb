@@ -129,11 +129,14 @@ Deno.serve(async (request) => {
     }
 
     if (submission.status !== 'PENDING') {
-      return jsonResponse({ error: 'Only pending submissions can be moderated' }, 400)
+      return jsonResponse({
+        error: '该投稿已被其他审核员处理',
+        code: 'ALREADY_MODERATED',
+      }, 409)
     }
 
     if (action === 'reject') {
-      const { error: rejectError } = await adminClient
+      const { data: rejectData, error: rejectError } = await adminClient
         .from('submissions')
         .update({
           status: 'REJECTED',
@@ -142,10 +145,27 @@ Deno.serve(async (request) => {
           reviewed_at: new Date().toISOString(),
         })
         .eq('id', submissionId)
+        .eq('status', 'PENDING')
+        .select('id')
 
       if (rejectError) {
         return jsonResponse({ error: rejectError.message }, 500)
       }
+
+      if (!rejectData || rejectData.length === 0) {
+        return jsonResponse({
+          error: '该投稿已被其他审核员处理',
+          code: 'ALREADY_MODERATED',
+        }, 409)
+      }
+
+      await adminClient.from('submission_reviews').insert({
+        submission_id: submissionId,
+        reviewer_id: actorProfile.id,
+        reviewer_display_name: actorProfile.nickname,
+        action: 'REJECTED',
+        note: note || null,
+      })
 
       await adminClient.from('notifications').insert({
         user_id: submission.uploader_id,
@@ -155,7 +175,7 @@ Deno.serve(async (request) => {
         type: 'SUBMISSION_REJECTED',
         title: '你的投稿未通过审核',
         content: note || `《${submission.title}》未通过审核，请修改后再次提交。`,
-        link: '/profile',
+        link: '/my-submissions',
         metadata: { submission_id: submissionId },
       })
 
@@ -170,11 +190,177 @@ Deno.serve(async (request) => {
       return jsonResponse({ ok: true, status: 'REJECTED' })
     }
 
+    const isEdit = submission.metadata?.edit_for_image_id
+    const hasNewFile = submission.metadata?.has_new_file && submission.storage_path
+
+    if (isEdit) {
+      const { data: originalImage, error: imageFindError } = await adminClient
+        .from('images')
+        .select('*')
+        .eq('id', submission.metadata.edit_for_image_id)
+        .single()
+
+      if (imageFindError || !originalImage) {
+        return jsonResponse({ error: 'Original image not found for edit' }, 404)
+      }
+
+      let updateData: Record<string, unknown> = {
+        title: submission.title,
+        description: submission.description || '',
+        edit_status: null,
+        edit_reason: null,
+      }
+
+      if (hasNewFile) {
+        const { data: sourceFile, error: downloadError } = await adminClient.storage
+          .from(submission.storage_bucket)
+          .download(submission.storage_path)
+
+        if (downloadError || !sourceFile) {
+          return jsonResponse({ error: downloadError?.message || 'Failed to read source image' }, 500)
+        }
+
+        const ext = submission.original_filename?.includes('.')
+          ? submission.original_filename.split('.').pop()?.toLowerCase()
+          : 'png'
+        const targetPath = `approved/${new Date().toISOString().slice(0, 10)}/${Date.now()}-${originalImage.slug}.${ext}`
+
+        const { error: uploadError } = await adminClient.storage
+          .from('gallery-images')
+          .upload(targetPath, sourceFile, {
+            contentType: submission.mime_type || 'image/*',
+            upsert: false,
+          })
+
+        if (uploadError) {
+          return jsonResponse({ error: uploadError.message }, 500)
+        }
+
+        const {
+          data: { publicUrl },
+        } = adminClient.storage.from('gallery-images').getPublicUrl(targetPath)
+
+        updateData = {
+          ...updateData,
+          storage_path: targetPath,
+          image_url: publicUrl,
+          mime_type: submission.mime_type,
+          file_size: submission.file_size,
+        }
+      }
+
+      const { error: updateImageError } = await adminClient
+        .from('images')
+        .update(updateData)
+        .eq('id', originalImage.id)
+
+      if (updateImageError) {
+        return jsonResponse({ error: updateImageError.message }, 500)
+      }
+
+      const { data: updateSubmissionData, error: updateSubmissionError } = await adminClient
+        .from('submissions')
+        .update({
+          status: 'PUBLISHED',
+          reviewer_id: actorProfile.id,
+          reviewer_note: note || null,
+          reviewed_at: new Date().toISOString(),
+          published_image_id: originalImage.id,
+        })
+        .eq('id', submissionId)
+        .eq('status', 'PENDING')
+        .select('id')
+
+      if (updateSubmissionError) {
+        return jsonResponse({ error: updateSubmissionError.message }, 500)
+      }
+
+      if (!updateSubmissionData || updateSubmissionData.length === 0) {
+        return jsonResponse({
+          error: '该投稿已被其他审核员处理',
+          code: 'ALREADY_MODERATED',
+        }, 409)
+      }
+
+      await adminClient.from('submission_reviews').insert({
+        submission_id: submissionId,
+        reviewer_id: actorProfile.id,
+        reviewer_display_name: actorProfile.nickname,
+        action: 'APPROVED',
+        note: note || null,
+      })
+
+      await adminClient.from('notifications').insert({
+        user_id: submission.uploader_id,
+        actor_id: actorProfile.id,
+        actor_display_name: actorProfile.nickname,
+        actor_avatar_url: actorProfile.avatar_url,
+        type: 'SUBMISSION_PUBLISHED',
+        title: '你的图片修改已通过审核',
+        content: note || `《${submission.title}》的修改已生效。`,
+        link: `/image/${originalImage.slug}`,
+        metadata: {
+          submission_id: submissionId,
+          image_id: originalImage.id,
+        },
+      })
+
+      await adminClient.from('audit_logs').insert({
+        actor_id: actorProfile.id,
+        action: 'image.edit_approved',
+        entity_type: 'image',
+        entity_id: originalImage.id,
+        details: {
+          title: submission.title,
+          image_id: originalImage.id,
+          image_slug: originalImage.slug,
+          reviewer_note: note,
+        },
+      })
+
+      return jsonResponse({
+        ok: true,
+        status: 'PUBLISHED',
+        imageId: originalImage.id,
+        slug: originalImage.slug,
+      })
+    }
+
+    if (!submission.storage_path) {
+      return jsonResponse({ error: 'Submission has no storage_path' }, 400)
+    }
+
+    const { data: lockData, error: lockError } = await adminClient
+      .from('submissions')
+      .update({
+        status: 'PUBLISHED',
+        reviewer_id: actorProfile.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq('id', submissionId)
+      .eq('status', 'PENDING')
+      .select('id')
+
+    if (lockError) {
+      return jsonResponse({ error: lockError.message }, 500)
+    }
+
+    if (!lockData || lockData.length === 0) {
+      return jsonResponse({
+        error: '该投稿已被其他审核员处理',
+        code: 'ALREADY_MODERATED',
+      }, 409)
+    }
+
     const { data: sourceFile, error: downloadError } = await adminClient.storage
       .from(submission.storage_bucket)
       .download(submission.storage_path)
 
     if (downloadError || !sourceFile) {
+      await adminClient
+        .from('submissions')
+        .update({ status: 'PENDING', reviewer_id: null, reviewed_at: null })
+        .eq('id', submissionId)
       return jsonResponse({ error: downloadError?.message || 'Failed to read source image' }, 500)
     }
 
@@ -192,6 +378,10 @@ Deno.serve(async (request) => {
       })
 
     if (uploadError) {
+      await adminClient
+        .from('submissions')
+        .update({ status: 'PENDING', reviewer_id: null, reviewed_at: null })
+        .eq('id', submissionId)
       return jsonResponse({ error: uploadError.message }, 500)
     }
 
@@ -224,16 +414,17 @@ Deno.serve(async (request) => {
       .single()
 
     if (imageError || !image) {
+      await adminClient
+        .from('submissions')
+        .update({ status: 'PENDING', reviewer_id: null, reviewed_at: null })
+        .eq('id', submissionId)
       return jsonResponse({ error: imageError?.message || 'Failed to insert image row' }, 500)
     }
 
     const { error: updateSubmissionError } = await adminClient
       .from('submissions')
       .update({
-        status: 'PUBLISHED',
-        reviewer_id: actorProfile.id,
         reviewer_note: note || null,
-        reviewed_at: new Date().toISOString(),
         published_image_id: image.id,
       })
       .eq('id', submissionId)
@@ -241,6 +432,14 @@ Deno.serve(async (request) => {
     if (updateSubmissionError) {
       return jsonResponse({ error: updateSubmissionError.message }, 500)
     }
+
+    await adminClient.from('submission_reviews').insert({
+      submission_id: submissionId,
+      reviewer_id: actorProfile.id,
+      reviewer_display_name: actorProfile.nickname,
+      action: 'APPROVED',
+      note: note || null,
+    })
 
     await adminClient.from('notifications').insert({
       user_id: submission.uploader_id,

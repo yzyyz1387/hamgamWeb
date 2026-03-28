@@ -18,7 +18,9 @@ let initPromise = null
 let attachedStore = null
 let sessionCheckTimer = null
 let sessionChannel = null
-let sessionChannelUserId = ''
+let sessionChannelUserId = null
+let notificationChannel = null
+let notificationChannelUserId = null
 let activityListenersBound = false
 let storageListenerBound = false
 let visibilityListenerBound = false
@@ -145,7 +147,7 @@ function stopSessionCheckTimer() {
 
 function stopSessionRealtimeWatcher() {
   if (!sessionChannel) {
-    sessionChannelUserId = ''
+    sessionChannelUserId = null
     return
   }
   if (supabaseEnabled) {
@@ -156,7 +158,23 @@ function stopSessionRealtimeWatcher() {
     }
   }
   sessionChannel = null
-  sessionChannelUserId = ''
+  sessionChannelUserId = null
+}
+
+function stopNotificationRealtimeWatcher() {
+  if (!notificationChannel) {
+    notificationChannelUserId = null
+    return
+  }
+  if (supabaseEnabled) {
+    try {
+      requireSupabase().removeChannel(notificationChannel)
+    } catch {
+      // ignore channel cleanup failure
+    }
+  }
+  notificationChannel = null
+  notificationChannelUserId = null
 }
 
 function handleStorageEvent(event) {
@@ -316,6 +334,7 @@ export const useAuthStore = defineStore('auth', {
 
       if (previousUserId && previousUserId !== nextUserId) {
         stopSessionRealtimeWatcher()
+        stopNotificationRealtimeWatcher()
         this.clearUserLocalStorage(previousUserId)
       }
 
@@ -334,6 +353,7 @@ export const useAuthStore = defineStore('auth', {
         bindActivityListeners()
         startSessionCheckTimer()
         await this.loadUnreadNotifications().catch(() => {})
+        await this.ensureNotificationRealtimeSubscription().catch(() => {})
         if (!skipHealthCheck) {
           await this.runSessionHealthCheck({ force: true }).catch(() => {})
         }
@@ -342,6 +362,7 @@ export const useAuthStore = defineStore('auth', {
         this.unreadNotifications = 0
         stopSessionCheckTimer()
         stopSessionRealtimeWatcher()
+        stopNotificationRealtimeWatcher()
         unbindActivityListeners()
       }
     },
@@ -390,6 +411,33 @@ export const useAuthStore = defineStore('auth', {
         )
         .subscribe()
       sessionChannelUserId = this.user.id
+      return true
+    },
+
+    async ensureNotificationRealtimeSubscription() {
+      if (!this.user || !supabaseEnabled) return false
+      if (notificationChannel && notificationChannelUserId === this.user.id) {
+        return true
+      }
+      stopNotificationRealtimeWatcher()
+      const supabase = requireSupabase()
+      notificationChannel = supabase
+        .channel(`notifications:${this.user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${this.user.id}`,
+          },
+          () => {
+            this.unreadNotifications++
+            showToast('您有一条新通知')
+          },
+        )
+        .subscribe()
+      notificationChannelUserId = this.user.id
       return true
     },
 
@@ -580,6 +628,7 @@ export const useAuthStore = defineStore('auth', {
       discardQueuedAuthStateChanges()
       stopSessionCheckTimer()
       stopSessionRealtimeWatcher()
+      stopNotificationRealtimeWatcher()
       unbindActivityListeners()
       lastHealthCheckAt = 0
       if (!localOnly && supabase) {

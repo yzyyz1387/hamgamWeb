@@ -412,6 +412,18 @@ img {
   line-height: 1.6;
 }
 
+.review-note-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.notification-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .reply-indicator {
   display: flex;
   align-items: center;
@@ -724,6 +736,11 @@ img {
   color: #b91c1c;
 }
 
+.status-pill--deleted {
+  background: rgba(107, 114, 128, 0.14);
+  color: #6b7280;
+}
+
 .status-pill--reviewer {
   background: rgba(59, 130, 246, 0.14);
   color: #1d4ed8;
@@ -828,6 +845,7 @@ img {
 .notification-type-badge--comment { background: rgba(168, 85, 247, 0.15); color: #9333ea; }
 .notification-type-badge--role { background: rgba(236, 72, 153, 0.15); color: #db2777; }
 .notification-type-badge--account { background: rgba(34, 197, 94, 0.15); color: #16a34a; }
+.notification-type-badge--deleted { background: rgba(107, 114, 128, 0.15); color: #6b7280; }
 
 .notification-actor {
   display: inline-flex;
@@ -2544,6 +2562,44 @@ button.audit-user--actor:hover { color: #d19fe8; }
   font-weight: 500;
 }
 .audit-image-link:hover { text-decoration: underline; }
+
+.admin-actions-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(24, 34, 44, 0.08);
+}
+
+.edit-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  margin-top: 14px;
+  border-radius: 12px;
+  background: rgba(59, 130, 246, 0.08);
+  color: #2563eb;
+  font-size: 13px;
+}
+
+.edit-status-banner--rejected {
+  background: rgba(239, 68, 68, 0.08);
+  color: #dc2626;
+}
+
+.edit-preview {
+  margin-top: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  max-width: 300px;
+}
+
+.edit-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
 
 .audit-panel__footer { margin-top: 10px; text-align: center; }
 .audit-load-more {
