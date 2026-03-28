@@ -5,15 +5,42 @@
         <div class="app-shell__brand" @click="goTo('/')">{{ siteConfig.name }}</div>
         <nav class="app-shell__actions">
           <div class="nav-desktop-group">
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/')">主页</mdui-button>
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/random')">随机一张</mdui-button>
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/search')">搜索</mdui-button>
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/submit')">投稿</mdui-button>
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/team')">团队</mdui-button>
-            <mdui-button class="nav-desktop" variant="text" @click="goTo('/notifications')">
-              通知
-              <span v-if="auth.unreadNotifications" class="inline-badge">{{ auth.unreadNotifications }}</span>
-            </mdui-button>
+            <mdui-tooltip content="主页" placement="bottom">
+              <button class="nav-icon-btn" @click="goTo('/')">
+                <mdui-icon name="home--rounded"></mdui-icon>
+              </button>
+            </mdui-tooltip>
+            <mdui-tooltip content="随机一张" placement="bottom">
+              <button class="nav-icon-btn" @click="goTo('/random')">
+                <mdui-icon name="shuffle--rounded"></mdui-icon>
+              </button>
+            </mdui-tooltip>
+            <div class="nav-search-box">
+              <mdui-icon name="search--rounded" class="nav-search-box__icon"></mdui-icon>
+              <input
+                v-model="searchKeyword"
+                type="text"
+                class="nav-search-box__input"
+                placeholder="搜索图片..."
+                @keydown.enter="doSearch"
+              />
+            </div>
+            <mdui-tooltip content="投稿" placement="bottom">
+              <button class="nav-icon-btn" @click="goTo('/submit')">
+                <mdui-icon name="add_photo_alternate--rounded"></mdui-icon>
+              </button>
+            </mdui-tooltip>
+            <mdui-tooltip content="团队" placement="bottom">
+              <button class="nav-icon-btn" @click="goTo('/team')">
+                <mdui-icon name="groups--rounded"></mdui-icon>
+              </button>
+            </mdui-tooltip>
+            <mdui-tooltip content="通知" placement="bottom">
+              <button class="nav-icon-btn" @click="goTo('/notifications')">
+                <mdui-icon name="notifications--rounded"></mdui-icon>
+                <span v-if="auth.unreadNotifications" class="nav-icon-badge">{{ auth.unreadNotifications }}</span>
+              </button>
+            </mdui-tooltip>
 
             <mdui-button
               v-if="!auth.isLoggedIn"
@@ -190,6 +217,7 @@ const menuRef = ref(null)
 const mobileMenuOpen = ref(false)
 const adminMenuOpen = ref(false)
 const mobileAdminMenuOpen = ref(false)
+const searchKeyword = ref('')
 const { showContextMenu } = useContextMenu()
 
 const adminBadgeVisible = computed(() => auth.canModerate && adminStore.pendingTotal > 0)
@@ -240,6 +268,15 @@ function goTo(path) {
   router.push(path)
 }
 
+function doSearch() {
+  const keyword = searchKeyword.value.trim()
+  if (keyword) {
+    router.push({ path: '/search', query: { q: keyword } })
+  } else {
+    router.push('/search')
+  }
+}
+
 function navigate(path) {
   menuOpen.value = false
   mobileMenuOpen.value = false
@@ -284,6 +321,88 @@ function openLink(link) {
 </script>
 
 <style scoped>
+.nav-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #5f6b76;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+}
+
+.nav-icon-btn:hover {
+  background: rgba(103, 80, 164, 0.08);
+  color: #6750a4;
+}
+
+mdui-tooltip {
+  --mdui-comp-tooltip-container-color: rgba(30, 30, 30, 0.9);
+  --mdui-comp-tooltip-supporting-text-color: #fff;
+}
+
+.nav-icon-btn mdui-icon {
+  font-size: 22px;
+}
+
+.nav-icon-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-search-box {
+  display: flex;
+  align-items: center;
+  background: rgba(17, 24, 39, 0.04);
+  border-radius: 20px;
+  padding: 0 12px;
+  height: 36px;
+  min-width: 200px;
+  max-width: 280px;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+
+.nav-search-box:focus-within {
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(103, 80, 164, 0.2);
+}
+
+.nav-search-box__icon {
+  font-size: 18px;
+  color: #8a9aaa;
+  margin-right: 8px;
+}
+
+.nav-search-box__input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 14px;
+  color: #18222c;
+}
+
+.nav-search-box__input::placeholder {
+  color: #8a9aaa;
+}
+
 .user-menu__submenu {
   width: 100%;
 }

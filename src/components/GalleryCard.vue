@@ -1,6 +1,6 @@
 <template>
-  <div class="image-card" :data-image-slug="image.slug" :data-image-id="image.id">
-    <div class="image-card__media" @click="goDetail">
+  <div class="image-card" :data-image-slug="image.slug" :data-image-id="image.id" @click="goDetail">
+    <div class="image-card__media">
       <img :src="image.image_url" :alt="image.title" loading="lazy" :data-image-slug="image.slug" :data-image-id="image.id" />
     </div>
     <div class="image-card__body">
