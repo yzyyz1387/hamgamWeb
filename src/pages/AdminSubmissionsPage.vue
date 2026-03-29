@@ -245,6 +245,7 @@
   </section>
 
   <VueEasyLightbox
+    teleport="body"
     :visible="lightboxVisible"
     :imgs="lightboxImg ? [lightboxImg] : []"
     :index="0"

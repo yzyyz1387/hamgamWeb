@@ -3969,3 +3969,14 @@ button.audit-user--actor:hover { color: #d19fe8; }
 .mx-context-menu-item[data-has-reaction]:hover {
   transform: scale(1.1);
 }
+
+/* ===== vue-easy-lightbox z-index 修复 ===== */
+.vel-modal,
+.vue-easy-lightbox,
+.vue-easy-lightbox__modal {
+  z-index: 9999 !important;
+}
+
+.vel-img {
+  z-index: 10000 !important;
+}

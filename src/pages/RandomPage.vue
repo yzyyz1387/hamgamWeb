@@ -12,6 +12,7 @@
             <img :src="currentImage.image_url" :alt="currentImage.title" />
           </div>
           <VueEasyLightbox
+            teleport="body"
             :visible="lightboxOpen"
             :imgs="[currentImage.image_url]"
             :index="0"

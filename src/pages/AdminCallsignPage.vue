@@ -84,6 +84,7 @@
     <div v-else class="empty-state">当前筛选条件下没有申请。</div>
 
     <VueEasyLightbox
+      teleport="body"
       :visible="lightboxVisible"
       :imgs="lightboxImages"
       :index="lightboxIndex"

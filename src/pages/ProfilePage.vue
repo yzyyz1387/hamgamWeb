@@ -322,6 +322,7 @@
     </mdui-dialog>
 
     <VueEasyLightbox
+      teleport="body"
       :visible="lightboxVisible"
       :imgs="lightboxImages"
       :index="lightboxIndex"
