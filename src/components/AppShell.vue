@@ -46,7 +46,7 @@
               v-if="!auth.isLoggedIn"
               class="nav-desktop"
               variant="filled-tonal"
-              @click="goTo('/login')"
+              @click="goToLogin"
             >登录</mdui-button>
 
             <div v-if="auth.isLoggedIn" class="user-menu" ref="menuRef">
@@ -130,7 +130,7 @@
           <button class="mobile-nav-item" @click="mobileGoTo('/search')">搜索</button>
           <button class="mobile-nav-item" @click="mobileGoTo('/submit')">投稿</button>
           <template v-if="!auth.isLoggedIn">
-            <button class="mobile-nav-item" @click="mobileGoTo('/login')">登录</button>
+            <button class="mobile-nav-item" @click="mobileGoToLogin">登录</button>
             <button class="mobile-nav-item" @click="mobileGoTo('/register')">注册</button>
           </template>
           <template v-else>
@@ -277,6 +277,10 @@ function doSearch() {
   }
 }
 
+function goToLogin() {
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
+}
+
 function navigate(path) {
   menuOpen.value = false
   mobileMenuOpen.value = false
@@ -286,6 +290,11 @@ function navigate(path) {
 function mobileGoTo(path) {
   mobileMenuOpen.value = false
   router.push(path)
+}
+
+function mobileGoToLogin() {
+  mobileMenuOpen.value = false
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
 }
 
 async function mobileSignOut() {

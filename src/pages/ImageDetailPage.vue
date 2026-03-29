@@ -154,7 +154,7 @@
               <h3>登录后参与评论</h3>
               <p>注册后即可评论、投稿、接收通知，并管理自己的头像与资料。</p>
             </div>
-            <mdui-button variant="filled" @click="router.push('/login')">前往登录</mdui-button>
+            <mdui-button variant="filled" @click="goToLogin">前往登录</mdui-button>
           </div>
         </mdui-card>
 
@@ -394,6 +394,10 @@ async function onToggleReaction(emoji) {
 function goContributorProfile() {
   const path = toUserProfilePath(contributorUid.value)
   if (path) router.push(path)
+}
+
+function goToLogin() {
+  router.push({ path: '/login', query: { redirect: route.fullPath } })
 }
 
 async function submitComment() {
@@ -768,6 +772,10 @@ async function submitEdit() {
   
   .image-viewer__frame {
     height: 300px;
+  }
+  
+  .side-panel {
+    order: 2;
   }
 }
 </style>
