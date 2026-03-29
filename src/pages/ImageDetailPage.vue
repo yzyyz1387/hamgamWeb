@@ -762,12 +762,15 @@ async function submitEdit() {
   .image-layout {
     grid-template-columns: 1fr;
     gap: 16px;
+    display: flex;
+    flex-direction: column;
   }
   
   .image-viewer {
     position: static;
     max-height: none;
     overflow: visible;
+    order: 1;
   }
   
   .image-viewer__frame {
