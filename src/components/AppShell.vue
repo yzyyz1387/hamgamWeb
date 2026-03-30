@@ -196,7 +196,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { siteConfig } from '@/config/site'
 import { isExternalLink } from '@/lib/safeLink'
 import { showToast } from '@/lib/toast'
@@ -209,6 +209,7 @@ import NoticeDialog from '@/components/NoticeDialog.vue'
 import SiteFooter from '@/components/SiteFooter.vue'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const appStore = useAppStore()
 const adminStore = useAdminStore()
