@@ -62,7 +62,7 @@
             </div>
           </div>
           <div v-if="auth.isLoggedIn" class="action-row" style="margin: 10px 0 18px">
-            <mdui-button variant="filled" :loading="submittingComment" :disabled="commentCooldown > 0" @click="submitComment">
+            <mdui-button variant="filled" :disabled="commentCooldown > 0" @click="submitComment">
               {{ commentCooldown > 0 ? `${commentCooldown}s 后可发送` : '发送评论' }}
             </mdui-button>
           </div>
@@ -118,9 +118,7 @@ const currentImage = ref(null)
 const myReactions = ref([])
 const comments = ref([])
 const commentText = ref('')
-const reactionBusy = ref(false)
 const lightboxOpen = ref(false)
-const submittingComment = ref(false)
 const contributorUid = ref(null)
 const commentCooldown = ref(0)
 let commentCooldownTimer = null
@@ -217,36 +215,65 @@ async function submitComment() {
   const trimmed = commentText.value.trim()
   if (!trimmed) { showToast('评论内容不能为空'); return }
   if (commentCooldown.value > 0) { showToast(`发送太频繁，请 ${commentCooldown.value} 秒后再试`); return }
-  submittingComment.value = true
+  
+  const tempId = `temp-${Date.now()}`
+  const tempComment = {
+    id: tempId,
+    image_id: currentImage.value.id,
+    user_id: auth.user.id,
+    author_display_name: auth.displayName || '用户',
+    content: trimmed,
+    parent_id: null,
+    created_at: new Date().toISOString(),
+    status: 'VISIBLE',
+    _isTemp: true,
+  }
+  
+  comments.value = [tempComment, ...comments.value]
+  const savedText = trimmed
+  commentText.value = ''
+  startCommentCooldown(30)
+  
   try {
-    const data = await createComment({ imageId: currentImage.value.id, userId: auth.user.id, content: trimmed })
-    comments.value = [data, ...comments.value]
-    commentText.value = ''
+    const data = await createComment({ imageId: currentImage.value.id, userId: auth.user.id, content: savedText })
+    const index = comments.value.findIndex(c => c.id === tempId)
+    if (index !== -1) {
+      comments.value[index] = data
+    }
     showToast('评论已发送')
-    startCommentCooldown(30)
   } catch (error) {
+    const index = comments.value.findIndex(c => c.id === tempId)
+    if (index !== -1) {
+      comments.value.splice(index, 1)
+    }
+    commentText.value = savedText
     showToast(getErrorMessage(error))
-  } finally {
-    submittingComment.value = false
   }
 }
 
 async function onToggleReaction(emoji) {
-  if (!auth.user || !currentImage.value || reactionBusy.value) {
+  if (!auth.user || !currentImage.value) {
     if (!auth.user) showToast('请先登录后再添加反应')
     return
   }
-  reactionBusy.value = true
+  
   const active = myReactions.value.includes(emoji)
+  
+  myReactions.value = active
+    ? myReactions.value.filter((value) => value !== emoji)
+    : [...myReactions.value, emoji]
+  galleryStore.updateReactionSummaryLocally(currentImage.value.id, emoji, !active)
+  currentImage.value = galleryStore.images.find((item) => item.id === currentImage.value.id) || currentImage.value
+  
   try {
-    const selected = await toggleImageReaction({ imageId: currentImage.value.id, userId: auth.user.id, emoji, active })
-    myReactions.value = selected ? [...myReactions.value, emoji] : myReactions.value.filter((value) => value !== emoji)
-    galleryStore.updateReactionSummaryLocally(currentImage.value.id, emoji, selected)
-    currentImage.value = galleryStore.images.find((item) => item.id === currentImage.value.id) || currentImage.value
+    await toggleImageReaction({ imageId: currentImage.value.id, userId: auth.user.id, emoji, active })
   } catch (error) {
+    myReactions.value = active
+      ? [...myReactions.value, emoji]
+      : myReactions.value.filter((value) => value !== emoji)
+    galleryStore.updateReactionSummaryLocally(currentImage.value.id, emoji, active)
+    currentImage.value = galleryStore.images.find((item) => item.id === currentImage.value.id) || currentImage.value
     showToast(getErrorMessage(error))
-  } finally {
-    reactionBusy.value = false
   }
 }
 </script>

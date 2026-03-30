@@ -109,7 +109,7 @@
             插入图片
           </mdui-button>
           <mdui-button variant="text" @click="showInsertHelp = true">如何插入？</mdui-button>
-          <mdui-button variant="filled" :loading="submittingComment" :disabled="commentCooldown > 0" @click="submitComment">
+          <mdui-button variant="filled" :disabled="commentCooldown > 0" @click="submitComment">
             {{ commentCooldown > 0 ? `${commentCooldown}s 后可发送` : '发送评论' }}
           </mdui-button>
         </div>
@@ -251,8 +251,6 @@ const image = ref(null)
 const comments = ref([])
 const myReactions = ref([])
 const commentText = ref('')
-const reactionBusy = ref(false)
-const submittingComment = ref(false)
 const lightboxOpen = ref(false)
 const contributorUid = ref(null)
 const commentCooldown = ref(0)
@@ -365,14 +363,21 @@ watch(insertImageUrl, async (url) => {
 })
 
 async function onToggleReaction(emoji) {
-  if (!auth.user || !image.value || reactionBusy.value) {
+  if (!auth.user || !image.value) {
     if (!auth.user) showToast('请先登录后再添加反应')
     return
   }
-  reactionBusy.value = true
+  
   const active = myReactions.value.includes(emoji)
+  
+  myReactions.value = active
+    ? myReactions.value.filter((item) => item !== emoji)
+    : [...myReactions.value, emoji]
+  galleryStore.updateReactionSummaryLocally(image.value.id, emoji, !active)
+  image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
+  
   try {
-    const selected = await toggleImageReaction({
+    await toggleImageReaction({
       imageId: image.value.id,
       userId: auth.user.id,
       emoji,
@@ -380,15 +385,13 @@ async function onToggleReaction(emoji) {
       imageTitle: image.value.title,
       imageSlug: image.value.slug,
     })
-    myReactions.value = selected
+  } catch (error) {
+    myReactions.value = active
       ? [...myReactions.value, emoji]
       : myReactions.value.filter((item) => item !== emoji)
-    galleryStore.updateReactionSummaryLocally(image.value.id, emoji, selected)
+    galleryStore.updateReactionSummaryLocally(image.value.id, emoji, active)
     image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
-  } catch (error) {
     showToast(getErrorMessage(error))
-  } finally {
-    reactionBusy.value = false
   }
 }
 
@@ -413,29 +416,53 @@ async function submitComment() {
     showToast(`发送太频繁，请 ${commentCooldown.value} 秒后再试`)
     return
   }
-  submittingComment.value = true
+  
   const isReply = !!replyingTo.value
+  const tempId = `temp-${Date.now()}`
+  const tempComment = {
+    id: tempId,
+    image_id: image.value.id,
+    user_id: auth.user.id,
+    author_display_name: auth.displayName || '用户',
+    content: trimmed,
+    parent_id: replyingTo.value?.id || null,
+    created_at: new Date().toISOString(),
+    status: 'VISIBLE',
+    _isTemp: true,
+  }
+  
+  comments.value = [tempComment, ...comments.value]
+  galleryStore.incrementCommentCountLocally(image.value.id, 1)
+  image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
+  const savedText = trimmed
+  commentText.value = ''
+  replyingTo.value = null
+  startCommentCooldown(30)
+  
   try {
     const data = await createComment({
       imageId: image.value.id,
       userId: auth.user.id,
-      content: trimmed,
-      parentId: replyingTo.value?.id || null,
+      content: savedText,
+      parentId: tempComment.parent_id,
       imageTitle: image.value.title,
       imageSlug: image.value.slug,
       replyToUser: replyingTo.value?.author_display_name || null,
     })
-    comments.value = [data, ...comments.value]
-    galleryStore.incrementCommentCountLocally(image.value.id, 1)
-    image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
-    commentText.value = ''
-    replyingTo.value = null
+    const index = comments.value.findIndex(c => c.id === tempId)
+    if (index !== -1) {
+      comments.value[index] = data
+    }
     showToast(isReply ? '回复已发送' : '评论已发送')
-    startCommentCooldown(30)
   } catch (error) {
+    const index = comments.value.findIndex(c => c.id === tempId)
+    if (index !== -1) {
+      comments.value.splice(index, 1)
+    }
+    galleryStore.incrementCommentCountLocally(image.value.id, -1)
+    image.value = galleryStore.images.find((item) => item.id === image.value.id) || image.value
+    commentText.value = savedText
     showToast(getErrorMessage(error))
-  } finally {
-    submittingComment.value = false
   }
 }
 
