@@ -1,0 +1,1 @@
+console.log(`插件版本兼容 / 数据迁移策略\n\n1. 先看插件中心中的“版本兼容与迁移”面板\n2. 再确认每个插件的 hostVersionRange / schemaVersion / migrationStrategy\n3. 如果策略为 host-schema：执行最新 supabase/schema.sql\n4. 如果策略为 host-migrations：执行 supabase/migrations 中列出的 migrationIds\n5. 如果策略为 scripted：执行插件声明的 migrationScript\n\n详细说明见：docs/plugins/VERSIONING_AND_MIGRATIONS.md`)

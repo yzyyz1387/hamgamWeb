@@ -1,0 +1,482 @@
+[
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "policyname": "announcements_admin_manage",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_super_admin()",
+    "with_check": "is_super_admin()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "announcements",
+    "policyname": "announcements_public_active",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "((is_active = true) AND (starts_at <= timezone('utc'::text, now())) AND ((ends_at IS NULL) OR (ends_at >= timezone('utc'::text, now()))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "audit_logs",
+    "policyname": "audit_logs_select_admin",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_super_admin()",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "callsign_applications",
+    "policyname": "callsign_app_admin",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_super_admin()",
+    "with_check": "is_super_admin()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "callsign_applications",
+    "policyname": "callsign_app_own_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(user_id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "callsign_applications",
+    "policyname": "callsign_app_own_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(user_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "comments",
+    "policyname": "comments_moderator_manage",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "can_moderate()",
+    "with_check": "can_moderate()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "comments",
+    "policyname": "comments_own_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(user_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "comments",
+    "policyname": "comments_own_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = auth.uid()) AND is_current_user_active() AND (EXISTS ( SELECT 1\n   FROM images i\n  WHERE ((i.id = comments.image_id) AND (i.status = 'PUBLISHED'::image_status)))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "comments",
+    "policyname": "comments_own_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(user_id = auth.uid())",
+    "with_check": "((user_id = auth.uid()) AND (status = 'VISIBLE'::comment_status))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "comments",
+    "policyname": "comments_public_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "((status = 'VISIBLE'::comment_status) AND (EXISTS ( SELECT 1\n   FROM images i\n  WHERE ((i.id = comments.image_id) AND (i.status = 'PUBLISHED'::image_status)))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "friend_links",
+    "policyname": "friend_links_admin_manage",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "ALL",
+    "qual": "is_super_admin()",
+    "with_check": "is_super_admin()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "friend_links",
+    "policyname": "friend_links_public_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(is_active = true)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "image_reactions",
+    "policyname": "reactions_delete_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((user_id = auth.uid()) OR can_moderate())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "image_reactions",
+    "policyname": "reactions_insert_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((user_id = auth.uid()) AND is_current_user_active() AND (EXISTS ( SELECT 1\n   FROM images i\n  WHERE ((i.id = image_reactions.image_id) AND (i.status = 'PUBLISHED'::image_status)))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "image_reactions",
+    "policyname": "reactions_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "((user_id = auth.uid()) OR can_moderate())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "images",
+    "policyname": "images_moderator_delete",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "can_moderate()",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "images",
+    "policyname": "images_moderator_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "can_moderate()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "images",
+    "policyname": "images_moderator_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "can_moderate()",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "images",
+    "policyname": "images_moderator_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "can_moderate()",
+    "with_check": "can_moderate()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "images",
+    "policyname": "images_public_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(status = 'PUBLISHED'::image_status)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "Admins can insert notifications to any user",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['SUPER_ADMIN'::user_role, 'REVIEWER'::user_role])))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "Users can insert notifications for others via system",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['SUPER_ADMIN'::user_role, 'REVIEWER'::user_role]))))) OR (auth.uid() = actor_id))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "Users can update their own notifications",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "UPDATE",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": "(auth.uid() = user_id)"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "Users can view their own notifications",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(auth.uid() = user_id)",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "notifications",
+    "policyname": "notifications_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(user_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "profiles_select_admin",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "is_super_admin()",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "profiles_select_self",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "profiles",
+    "policyname": "profiles_update_self",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(id = auth.uid())",
+    "with_check": "(id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "sessions",
+    "policyname": "sessions_delete_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "(user_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "sessions",
+    "policyname": "sessions_insert_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(user_id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "sessions",
+    "policyname": "sessions_select_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(user_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "sessions",
+    "policyname": "sessions_update_own",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(user_id = auth.uid())",
+    "with_check": "(user_id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submission_reviews",
+    "policyname": "Admins can view all reviews",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['SUPER_ADMIN'::user_role, 'REVIEWER'::user_role])))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submission_reviews",
+    "policyname": "Reviewers can insert reviews",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['SUPER_ADMIN'::user_role, 'REVIEWER'::user_role])))))"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submission_reviews",
+    "policyname": "Users can view their own submission reviews",
+    "permissive": "PERMISSIVE",
+    "roles": "{public}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM submissions\n  WHERE ((submissions.id = submission_reviews.submission_id) AND (submissions.uploader_id = auth.uid()))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Reviewers can update submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['REVIEWER'::user_role, 'SUPER_ADMIN'::user_role])))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Reviewers can view all submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(EXISTS ( SELECT 1\n   FROM profiles\n  WHERE ((profiles.id = auth.uid()) AND (profiles.role = ANY (ARRAY['REVIEWER'::user_role, 'SUPER_ADMIN'::user_role])))))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Users can delete own pending or rejected submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((uploader_id = auth.uid()) AND (status = ANY (ARRAY['PENDING'::submission_status, 'REJECTED'::submission_status])))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Users can insert submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "(uploader_id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Users can update own submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "(uploader_id = auth.uid())",
+    "with_check": "(uploader_id = auth.uid())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "Users can view own submissions",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(uploader_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_moderator_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "can_moderate()",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_moderator_update",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "can_moderate()",
+    "with_check": "can_moderate()"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_own_delete_pending",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "DELETE",
+    "qual": "((uploader_id = auth.uid()) AND (status = 'PENDING'::submission_status))",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_own_insert",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "INSERT",
+    "qual": null,
+    "with_check": "((uploader_id = auth.uid()) AND is_current_user_active())"
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_own_select",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "SELECT",
+    "qual": "(uploader_id = auth.uid())",
+    "with_check": null
+  },
+  {
+    "schemaname": "public",
+    "tablename": "submissions",
+    "policyname": "submissions_own_update_pending",
+    "permissive": "PERMISSIVE",
+    "roles": "{authenticated}",
+    "cmd": "UPDATE",
+    "qual": "((uploader_id = auth.uid()) AND (status = 'PENDING'::submission_status))",
+    "with_check": "((uploader_id = auth.uid()) AND (status = 'PENDING'::submission_status))"
+  }
+]

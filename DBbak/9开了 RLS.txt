@@ -1,0 +1,3 @@
+Error: Failed to run sql query: ERROR: 42703: column "forcerowsecurity" does not exist LINE 5: forcerowsecurity ^
+
+Note: A limit of 100 was applied to your query. If this was the cause of a syntax error, try selecting "No limit" instead and re-run the query.

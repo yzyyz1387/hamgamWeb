@@ -1,0 +1,284 @@
+[
+  {
+    "schema_name": "public",
+    "function_name": "admin_review_callsign_application",
+    "args": "p_application_id uuid, p_status text, p_reviewer_note text",
+    "return_type": "jsonb"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_update_user",
+    "args": "p_target_user_id uuid, p_role user_role, p_certifications jsonb, p_is_active boolean",
+    "return_type": "profiles"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "admin_update_user",
+    "args": "p_target_user_id uuid, p_role user_role, p_certifications jsonb, p_is_active boolean, p_show_in_team_page boolean",
+    "return_type": "profiles"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "assign_submission_to_reviewer",
+    "args": "",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "assign_uid",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "broadcast_system_notification",
+    "args": "p_title text, p_content text, p_link text, p_target_roles user_role[], p_target_user_ids uuid[], p_type notification_type",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "can_moderate",
+    "args": "",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "claim_active_session",
+    "args": "p_session_id uuid",
+    "return_type": "TABLE(user_id uuid, is_active boolean, active_auth_session_id uuid, active_auth_session_seen_at timestamp with time zone)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "claim_active_session",
+    "args": "p_session_id text, p_device_info text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "current_profile_role",
+    "args": "",
+    "return_type": "user_role"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "ensure_unique_image_slug",
+    "args": "p_base text, p_current_id uuid",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_duplicate_images_by_md5",
+    "args": "p_md5 character varying",
+    "return_type": "TABLE(id uuid, title text, image_url text, uploader_display_name text, slug text)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_duplicate_images_by_md5",
+    "args": "p_md5 text",
+    "return_type": "TABLE(id uuid, title text, slug text, image_url text)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_duplicate_submissions_by_md5",
+    "args": "p_md5 text",
+    "return_type": "TABLE(id uuid, title text, status text, storage_path text)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_duplicate_submissions_by_md5",
+    "args": "p_md5 character varying",
+    "return_type": "TABLE(id uuid, title text, storage_path text, uploader_display_name text, status text)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_public_profile_uid",
+    "args": "p_user_id uuid, p_callsign text",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_similar_images",
+    "args": "p_phash_hex text, p_threshold integer, p_limit integer",
+    "return_type": "TABLE(id uuid, title text, slug text, image_url text, uploader_display_name text, hamming_distance integer)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "find_similar_submissions",
+    "args": "p_phash_hex text, p_threshold integer, p_limit integer",
+    "return_type": "TABLE(id uuid, title text, status text, storage_path text, distance integer)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_public_danmaku_users",
+    "args": "p_limit integer",
+    "return_type": "TABLE(id uuid, nickname text, avatar_url text, callsign text, uid integer)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_public_profile",
+    "args": "p_uid integer",
+    "return_type": "TABLE(id uuid, nickname text, avatar_url text, bio text, callsign text, grid_locator text, certifications jsonb, role user_role, created_at timestamp with time zone, uid integer, is_active boolean)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_public_team_members",
+    "args": "",
+    "return_type": "TABLE(id uuid, nickname text, avatar_url text, bio text, callsign text, certifications jsonb, role user_role, uid integer, show_in_team_page boolean)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "get_public_team_stats",
+    "args": "",
+    "return_type": "TABLE(user_count bigint, active_count bigint)"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "guard_profile_update",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "handle_new_user",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "insert_audit_log",
+    "args": "p_action text, p_entity_type text, p_entity_id text, p_details jsonb",
+    "return_type": "uuid"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "is_active_session_valid",
+    "args": "p_session_id text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "is_current_user_active",
+    "args": "",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "is_super_admin",
+    "args": "",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "mark_all_notifications_read",
+    "args": "",
+    "return_type": "integer"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "mark_notification_read",
+    "args": "p_notification_id uuid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "notify_comment_created",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "notify_submission_created",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "prepare_announcement_row",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "prepare_comment_row",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "prepare_image_row",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "prepare_submission_row",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "refresh_image_comment_count",
+    "args": "p_image_id uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "refresh_image_reaction_summary",
+    "args": "p_image_id uuid",
+    "return_type": "void"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "release_active_session",
+    "args": "p_session_id text",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "release_active_session",
+    "args": "p_session_id uuid",
+    "return_type": "boolean"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "rls_auto_enable",
+    "args": "",
+    "return_type": "event_trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "slugify_text",
+    "args": "input text",
+    "return_type": "text"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "sync_comment_count_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "sync_reaction_summary_trigger",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "sync_user_profile_from_auth",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "touch_updated_at",
+    "args": "",
+    "return_type": "trigger"
+  },
+  {
+    "schema_name": "public",
+    "function_name": "validate_active_session",
+    "args": "p_session_id uuid",
+    "return_type": "TABLE(is_valid boolean, is_active boolean, active_auth_session_id uuid, active_auth_session_seen_at timestamp with time zone, role user_role)"
+  }
+]

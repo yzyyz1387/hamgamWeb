@@ -1,0 +1,54 @@
+[
+  {
+    "table_schema": "public",
+    "table_name": "announcements"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "audit_logs"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "callsign_applications"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "comments"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "friend_links"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "image_reactions"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "images"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "notifications"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "profiles"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "sessions"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "submission_reviews"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "submissions"
+  },
+  {
+    "table_schema": "public",
+    "table_name": "test_table"
+  }
+]

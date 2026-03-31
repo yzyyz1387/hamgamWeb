@@ -1,0 +1,140 @@
+[
+  {
+    "schema_name": "public",
+    "enum_name": "announcement_kind",
+    "sort_order": 1,
+    "enum_value": "BANNER"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "announcement_kind",
+    "sort_order": 2,
+    "enum_value": "POPUP"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "comment_status",
+    "sort_order": 1,
+    "enum_value": "VISIBLE"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "comment_status",
+    "sort_order": 2,
+    "enum_value": "HIDDEN"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "image_status",
+    "sort_order": 1,
+    "enum_value": "PUBLISHED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "image_status",
+    "sort_order": 2,
+    "enum_value": "ARCHIVED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 1,
+    "enum_value": "SYSTEM"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 2,
+    "enum_value": "SUBMISSION_CREATED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 3,
+    "enum_value": "SUBMISSION_PUBLISHED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 4,
+    "enum_value": "SUBMISSION_REJECTED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 5,
+    "enum_value": "COMMENT_CREATED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 6,
+    "enum_value": "ANNOUNCEMENT"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 7,
+    "enum_value": "ROLE_CHANGED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 8,
+    "enum_value": "ACCOUNT_UPDATED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "notification_type",
+    "sort_order": 9,
+    "enum_value": "IMAGE_DELETED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "submission_status",
+    "sort_order": 1,
+    "enum_value": "PENDING"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "submission_status",
+    "sort_order": 2,
+    "enum_value": "PUBLISHED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "submission_status",
+    "sort_order": 3,
+    "enum_value": "REJECTED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "submission_status",
+    "sort_order": 4,
+    "enum_value": "WITHDRAWN"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "submission_status",
+    "sort_order": 5,
+    "enum_value": "IMAGE_DELETED"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "user_role",
+    "sort_order": 1,
+    "enum_value": "SUPER_ADMIN"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "user_role",
+    "sort_order": 2,
+    "enum_value": "REVIEWER"
+  },
+  {
+    "schema_name": "public",
+    "enum_name": "user_role",
+    "sort_order": 3,
+    "enum_value": "USER"
+  }
+]

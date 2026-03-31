@@ -1,0 +1,33 @@
+# Nginx 配置示例
+# 将此配置添加到你的 nginx server 块中
+
+server {
+    listen 80;
+    server_name g.seeku.site;
+    root /var/www/hamburger;
+    index index.html;
+
+    # 启用 gzip 压缩
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript image/svg+xml;
+
+    # 静态资源缓存
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # SPA fallback - 所有路由都返回 index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # robots.txt 和 sitemap.xml
+    location = /robots.txt {
+        add_header Content-Type text/plain;
+    }
+
+    location = /sitemap.xml {
+        add_header Content-Type application/xml;
+    }
+}

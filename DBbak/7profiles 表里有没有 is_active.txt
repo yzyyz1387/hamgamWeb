@@ -1,0 +1,11 @@
+[
+  {
+    "column_name": "id"
+  },
+  {
+    "column_name": "role"
+  },
+  {
+    "column_name": "is_active"
+  }
+]

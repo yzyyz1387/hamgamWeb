@@ -1,0 +1,128 @@
+[
+  {
+    "table_name": "announcements",
+    "column_name": "created_by",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "announcements_created_by_fkey"
+  },
+  {
+    "table_name": "audit_logs",
+    "column_name": "actor_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "audit_logs_actor_id_fkey"
+  },
+  {
+    "table_name": "callsign_applications",
+    "column_name": "reviewer_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "callsign_applications_reviewer_id_fkey"
+  },
+  {
+    "table_name": "callsign_applications",
+    "column_name": "user_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "callsign_applications_user_id_fkey"
+  },
+  {
+    "table_name": "comments",
+    "column_name": "image_id",
+    "foreign_table_name": "images",
+    "foreign_column_name": "id",
+    "constraint_name": "comments_image_id_fkey"
+  },
+  {
+    "table_name": "comments",
+    "column_name": "parent_id",
+    "foreign_table_name": "comments",
+    "foreign_column_name": "id",
+    "constraint_name": "comments_parent_id_fkey"
+  },
+  {
+    "table_name": "comments",
+    "column_name": "user_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "comments_user_id_fkey"
+  },
+  {
+    "table_name": "friend_links",
+    "column_name": "created_by",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "friend_links_created_by_fkey"
+  },
+  {
+    "table_name": "image_reactions",
+    "column_name": "image_id",
+    "foreign_table_name": "images",
+    "foreign_column_name": "id",
+    "constraint_name": "image_reactions_image_id_fkey"
+  },
+  {
+    "table_name": "image_reactions",
+    "column_name": "user_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "image_reactions_user_id_fkey"
+  },
+  {
+    "table_name": "images",
+    "column_name": "uploader_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "images_uploader_id_fkey"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "actor_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "notifications_actor_id_fkey"
+  },
+  {
+    "table_name": "notifications",
+    "column_name": "user_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "notifications_user_id_fkey"
+  },
+  {
+    "table_name": "sessions",
+    "column_name": "user_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "sessions_user_id_fkey"
+  },
+  {
+    "table_name": "submission_reviews",
+    "column_name": "submission_id",
+    "foreign_table_name": "submissions",
+    "foreign_column_name": "id",
+    "constraint_name": "submission_reviews_submission_id_fkey"
+  },
+  {
+    "table_name": "submissions",
+    "column_name": "published_image_id",
+    "foreign_table_name": "images",
+    "foreign_column_name": "id",
+    "constraint_name": "submissions_published_image_id_fkey"
+  },
+  {
+    "table_name": "submissions",
+    "column_name": "reviewer_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "submissions_reviewer_id_fkey"
+  },
+  {
+    "table_name": "submissions",
+    "column_name": "uploader_id",
+    "foreign_table_name": "profiles",
+    "foreign_column_name": "id",
+    "constraint_name": "submissions_uploader_id_fkey"
+  }
+]

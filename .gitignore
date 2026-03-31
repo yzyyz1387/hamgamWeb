@@ -1,0 +1,44 @@
+.DS_Store
+node_modules
+/dist
+/src/config.js
+
+# local env files
+.env.local
+.env.*.local
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+*.tmp
+*.temp
+tmp_*.js
+edge
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+
+# Syntax check cache
+.syntax_check/
+
+# Supabase CLI temp files
+supabase/.temp/
+
+# Test scripts with hardcoded keys
+scripts/test-distance.cjs
+scripts/process-hashes.js
