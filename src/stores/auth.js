@@ -30,9 +30,10 @@ let authStateChangeQueue = Promise.resolve()
 let authStateChangeSeq = 0
 let authStateChangeDiscardBeforeSeq = 0
 
-function buildEmailRedirectTo() {
+function buildEmailRedirectTo(nextPath = '/login') {
   if (typeof window === 'undefined') return undefined
-  return `${window.location.origin}${window.location.pathname}`
+  const next = encodeURIComponent(nextPath)
+  return `${window.location.origin}/auth/callback?next=${next}`
 }
 
 function readPasswordRecoveryHashFlag() {
@@ -614,7 +615,7 @@ export const useAuthStore = defineStore('auth', {
             data: {
               nickname,
             },
-            emailRedirectTo: buildEmailRedirectTo(),
+            emailRedirectTo: buildEmailRedirectTo('/login'),
           },
         })
         if (error) throw error

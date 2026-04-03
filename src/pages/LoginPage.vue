@@ -344,7 +344,7 @@ async function sendReset() {
   try {
     const supabase = requireSupabase()
     const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
-      redirectTo: `${window.location.origin}${window.location.pathname}`,
+      redirectTo: `${window.location.origin}/auth/callback?next=/reset-password&type=recovery`,
     })
     if (error) throw error
     resetSent.value = true

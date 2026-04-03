@@ -15,6 +15,7 @@ import AdminNotificationsPage from '@/pages/AdminNotificationsPage.vue'
 import LegacyRedirectPage from '@/pages/LegacyRedirectPage.vue'
 import SearchPage from '@/pages/SearchPage.vue'
 import ResetPasswordPage from '@/pages/ResetPasswordPage.vue'
+import AuthCallbackPage from '@/pages/AuthCallbackPage.vue'
 import UserProfilePage from '@/pages/UserProfilePage.vue'
 import AdminImagesPage from '@/pages/AdminImagesPage.vue'
 import TeamPage from '@/pages/TeamPage.vue'
@@ -81,6 +82,8 @@ export const coreRoutes = [
     meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] },
   },
   { path: '/search', name: 'search', component: SearchPage },
+  { path: '/auth/callback', name: 'auth-callback', component: AuthCallbackPage, meta: { guestOnly: true } },
+  { path: '/auth/confirm', name: 'auth-confirm', component: AuthCallbackPage, meta: { guestOnly: true } },
   { path: '/reset-password', name: 'reset-password', component: ResetPasswordPage },
   { path: '/user/:uid', name: 'user-profile', component: UserProfilePage },
   { path: '/admin/images', name: 'admin-images', component: AdminImagesPage, meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] } },
