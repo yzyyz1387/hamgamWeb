@@ -26,6 +26,8 @@ import AdminCallsignPage from '@/pages/AdminCallsignPage.vue'
 import AdminImagesPage from '@/pages/AdminImagesPage.vue'
 import TeamPage from '@/pages/TeamPage.vue'
 import AdminHashProcessorPage from '@/pages/AdminHashProcessorPage.vue'
+import AdminPluginsPage from '@/pages/AdminPluginsPage.vue'
+import AdminFeedbackPage from '@/pages/AdminFeedbackPage.vue'
 
 const routes = [
   { path: '/', name: 'home', component: HomePage },
@@ -94,6 +96,18 @@ const routes = [
     meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] },
   },
   {
+    path: '/admin/plugins/:pluginId?',
+    name: 'admin-plugins',
+    component: AdminPluginsPage,
+    meta: { requiresAuth: true, roles: ['SUPER_ADMIN'], capabilities: ['plugin.manage'] },
+  },
+  {
+    path: '/admin/feedback',
+    name: 'admin-feedback',
+    component: AdminFeedbackPage,
+    meta: { requiresAuth: true, roles: ['SUPER_ADMIN'], capabilities: ['reviewer.manage'] },
+  },
+  {
     path: '/:legacyPath(.*)*',
     name: 'legacy-redirect',
     component: LegacyRedirectPage,
@@ -128,7 +142,7 @@ router.beforeEach(async (to) => {
     return true
   }
   
-  if (auth.passwordRecoveryError && !['login', 'auth-callback', 'auth-confirm', 'reset-password'].includes(String(to.name || ''))) {
+  if (auth.passwordRecoveryError && !['login', 'auth-callback', 'auth-confirm', 'reset-password', 'admin-plugins', 'admin-feedback'].includes(String(to.name || ''))) {
     auth.passwordRecoveryError = false
     return { name: 'login', query: { recoveryError: '1' } }
   }

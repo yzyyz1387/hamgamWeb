@@ -1527,6 +1527,8 @@ mdui-icon {
 }
 .site-footer__name { font-weight: 600; }
 .site-footer__icp { color: #8a9aaa; }
+.site-footer__icp-link { color: #8a9aaa; text-decoration: none; transition: color 0.15s; }
+.site-footer__icp-link:hover { color: #6750a4; }
 .site-footer__moe-icp {
   display: inline-flex;
   align-items: center;

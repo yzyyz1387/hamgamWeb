@@ -1,6 +1,7 @@
 import friendLinksPlugin from '@/plugins/plugins/friend-links'
 import callsignPlugin from '@/plugins/plugins/callsign'
 import hashProcessorPlugin from '@/plugins/plugins/hash-processor'
+import imageFeedbackPlugin from '@/plugins/plugins/image-feedback'
 
 const builtinPluginCatalog = [
   {
@@ -23,6 +24,13 @@ const builtinPluginCatalog = [
     installMode: 'bundled',
     loader: async () => hashProcessorPlugin,
     plugin: hashProcessorPlugin,
+  },
+  {
+    id: imageFeedbackPlugin.id,
+    source: 'builtin',
+    installMode: 'bundled',
+    loader: async () => imageFeedbackPlugin,
+    plugin: imageFeedbackPlugin,
   },
 ]
 

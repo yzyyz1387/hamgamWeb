@@ -180,7 +180,13 @@
       </aside>
     </div>
 
-    <div v-else class="empty-state">
+    <FeedbackDialog
+      v-model:visible="feedbackDialogVisible"
+      :image-id="image?.id || ''"
+      :image-title="image?.title || ''"
+    ></FeedbackDialog>
+
+    <div v-if="!loading && !image" class="empty-state">
       <p>没有找到这张图片，可能链接已失效。</p>
       <mdui-button variant="filled" @click="router.push('/')">返回主页</mdui-button>
     </div>
@@ -252,12 +258,13 @@ import { computePHash, binaryToHex, computeMD5 } from '@/lib/phash'
 import { toUserProfilePath } from '@/lib/uid'
 import { requireSupabase } from '@/lib/supabase'
 import { safeInsertAuditLog } from '@/lib/audit'
-import { getImageDetailActions, invokePluginAction } from '@/plugins/runtime'
+import { getImageDetailActions, invokePluginAction, onPluginEvent, emitPluginEvent } from '@/plugins/runtime'
 import { useAuthStore } from '@/stores/auth'
 import { useGalleryStore } from '@/stores/gallery'
 import AppTextField from '@/components/AppTextField.vue'
 import EmojiBar from '@/components/EmojiBar.vue'
 import CommentList from '@/components/CommentList.vue'
+import FeedbackDialog from '@/components/feedback/FeedbackDialog.vue'
 import VueEasyLightbox from 'vue-easy-lightbox'
 
 const route = useRoute()
@@ -280,6 +287,7 @@ const insertPreviewImage = ref(null)
 const insertError = ref('')
 const replyingTo = ref(null)
 const showEditDialog = ref(false)
+const feedbackDialogVisible = ref(false)
 const editTitle = ref('')
 const editDescription = ref('')
 const editFile = ref(null)
@@ -328,6 +336,11 @@ async function loadPage() {
 }
 
 onMounted(loadPage)
+
+onPluginEvent('image-feedback:open', ({ imageId, imageTitle }) => {
+  if (imageId) feedbackDialogVisible.value = true
+})
+
 watch(() => route.params.slug, loadPage)
 watch(() => route.query.edit, (edit) => {
   if (edit === 'true' && canEditImage.value) {

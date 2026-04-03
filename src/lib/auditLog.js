@@ -37,6 +37,12 @@ const ACTION_LABELS = {
   'plugin.logger.info': '记录了插件日志',
   'plugin.logger.warn': '记录了插件警告',
   'plugin.logger.error': '记录了插件错误',
+  'feedback.created': '提交了图片反馈',
+  'feedback.updated': '处理了反馈状态',
+  'feedback.replied': '回复了反馈',
+  'image.hidden_via_feedback': '通过反馈隐藏了图片',
+  'site_feedback.created': '提交了网站反馈',
+  'site_feedback.updated': '处理了网站反馈',
 }
 
 const ACTION_LEVEL = {
@@ -72,6 +78,12 @@ const ACTION_LEVEL = {
   'plugin.logger.info': 'info',
   'plugin.logger.warn': 'warn',
   'plugin.logger.error': 'error',
+  'feedback.created': 'info',
+  'feedback.updated': 'warn',
+  'feedback.replied': 'info',
+  'image.hidden_via_feedback': 'warn',
+  'site_feedback.created': 'info',
+  'site_feedback.updated': 'warn',
 }
 
 /**
@@ -285,6 +297,31 @@ export function formatAuditLog(log, nickMap = new Map()) {
     case 'image.edit_rejected':
       description = '驳回了图片编辑'
       extra = d.edit_reason || null
+      break
+
+    case 'feedback.created':
+      description = '提交了图片反馈'
+      extra = d.image_title ? `《${d.image_title}》` : null
+      if (d.feedback_type) {
+        const typeMap = { violation: '违规内容', copyright: '版权问题', quality: '质量问题', other: '其他' }
+        extra = `${extra || ''}[${typeMap[d.feedback_type] || d.feedback_type}]`
+      }
+      break
+
+    case 'feedback.updated':
+      description = '处理了反馈状态'
+      extra = `${d.old_status || '?'} → ${d.new_status || '?'}`
+      if (d.review_note) extra += `，${d.review_note}`
+      break
+
+    case 'feedback.replied':
+      description = '回复了反馈'
+      extra = d.content_preview || null
+      break
+
+    case 'image.hidden_via_feedback':
+      description = '通过反馈隐藏了图片'
+      extra = d.title ? `《${d.title}》` : d.slug || null
       break
 
     default:

@@ -7,6 +7,7 @@ export const siteConfig = {
   author: import.meta.env.VITE_SITE_AUTHOR || 'BD8CWG',
   url: import.meta.env.VITE_SITE_URL || 'https://g.seeku.site',
   icp: import.meta.env.VITE_SITE_ICP || '',
+  icpUrl: import.meta.env.VITE_SITE_ICP_URL || 'https://beian.miit.gov.cn/',
   moeIcp: import.meta.env.VITE_SITE_MOE_ICP || '202xxxxx',
   galleryBucket: import.meta.env.VITE_PUBLIC_GALLERY_BUCKET || 'gallery-images',
   submissionBucket:

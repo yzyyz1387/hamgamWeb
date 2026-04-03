@@ -588,16 +588,21 @@ export const useAuthStore = defineStore('auth', {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        await this.applySession(data.session, { claimSession: true, skipHealthCheck: false, deferNonCritical: true })
-        await safeInsertAuditLog({
+        
+        const userId = data.user?.id || null
+        const userEmail = data.user?.email || email
+        
+        safeInsertAuditLog({
           action: 'auth.signed_in',
           entityType: 'auth',
-          entityId: data.user?.id || this.user?.id || null,
+          entityId: userId,
           details: {
-            email: data.user?.email || email,
+            email: userEmail,
             device_info: typeof navigator !== 'undefined' ? navigator.userAgent || null : null,
           },
-        })
+        }).catch(() => {})
+        
+        await this.applySession(data.session, { claimSession: true, skipHealthCheck: false, deferNonCritical: true })
         return data
       } finally {
         this.loading = false

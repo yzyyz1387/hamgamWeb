@@ -25,6 +25,7 @@ const DEFAULT_ROLE_CAPABILITIES = {
     'callsign.review',
     'plugin.manage',
     'tools.hash-processor',
+    'feedback.manage',
   ],
 }
 

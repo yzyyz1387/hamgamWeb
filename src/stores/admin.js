@@ -15,10 +15,13 @@ export const useAdminStore = defineStore('admin', {
   state: () => ({
     pendingSubmissions: 0,
     pendingCallsigns: 0,
+    pendingImageFeedbacks: 0,
+    pendingSiteFeedbacks: 0,
     loading: false,
   }),
   getters: {
-    pendingTotal: (state) => state.pendingSubmissions + state.pendingCallsigns,
+    pendingTotal: (state) => state.pendingSubmissions + state.pendingCallsigns + state.pendingImageFeedbacks + state.pendingSiteFeedbacks,
+    pendingFeedbacks: (state) => state.pendingImageFeedbacks + state.pendingSiteFeedbacks,
   },
   actions: {
     async loadPendingCounts() {
@@ -26,7 +29,9 @@ export const useAdminStore = defineStore('admin', {
       if (!supabaseEnabled || !auth.canModerate) {
         this.pendingSubmissions = 0
         this.pendingCallsigns = 0
-        return { submissions: 0, callsigns: 0 }
+        this.pendingImageFeedbacks = 0
+        this.pendingSiteFeedbacks = 0
+        return { submissions: 0, callsigns: 0, imageFeedbacks: 0, siteFeedbacks: 0 }
       }
 
       this.loading = true
@@ -37,13 +42,23 @@ export const useAdminStore = defineStore('admin', {
           auth.isSuperAdmin
             ? supabase.from('callsign_applications').select('id', { head: true, count: 'exact' }).eq('status', 'PENDING')
             : Promise.resolve({ count: 0, error: null }),
+          auth.isSuperAdmin
+            ? supabase.from('image_feedbacks').select('id', { head: true, count: 'exact' }).eq('status', 'PENDING')
+            : Promise.resolve({ count: 0, error: null }),
+          auth.isSuperAdmin
+            ? supabase.from('site_feedbacks').select('id', { head: true, count: 'exact' }).eq('status', 'PENDING')
+            : Promise.resolve({ count: 0, error: null }),
         ])
 
         this.pendingSubmissions = safeCount(results[0])
         this.pendingCallsigns = safeCount(results[1])
+        this.pendingImageFeedbacks = safeCount(results[2])
+        this.pendingSiteFeedbacks = safeCount(results[3])
         return {
           submissions: this.pendingSubmissions,
           callsigns: this.pendingCallsigns,
+          imageFeedbacks: this.pendingImageFeedbacks,
+          siteFeedbacks: this.pendingSiteFeedbacks,
         }
       } finally {
         this.loading = false
@@ -66,6 +81,8 @@ export const useAdminStore = defineStore('admin', {
       this.stopPolling()
       this.pendingSubmissions = 0
       this.pendingCallsigns = 0
+      this.pendingImageFeedbacks = 0
+      this.pendingSiteFeedbacks = 0
       this.loading = false
     },
   },

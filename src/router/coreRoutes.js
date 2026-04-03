@@ -20,6 +20,7 @@ import UserProfilePage from '@/pages/UserProfilePage.vue'
 import AdminImagesPage from '@/pages/AdminImagesPage.vue'
 import TeamPage from '@/pages/TeamPage.vue'
 import AdminPluginsPage from '@/pages/AdminPluginsPage.vue'
+import AdminFeedbackPage from '@/pages/AdminFeedbackPage.vue'
 
 export const coreRoutes = [
   { path: '/', name: 'home', component: HomePage },
@@ -87,6 +88,7 @@ export const coreRoutes = [
   { path: '/reset-password', name: 'reset-password', component: ResetPasswordPage, meta: { public: true } },
   { path: '/user/:uid', name: 'user-profile', component: UserProfilePage },
   { path: '/admin/images', name: 'admin-images', component: AdminImagesPage, meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] } },
+  { path: '/admin/feedback', name: 'admin-feedback', component: AdminFeedbackPage, meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] } },
   { path: '/team', name: 'team', component: TeamPage },
 ]
 

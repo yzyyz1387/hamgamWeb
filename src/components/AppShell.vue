@@ -89,6 +89,9 @@
                   <span>通知中心</span>
                   <span v-if="auth.unreadNotifications" class="inline-badge inline-badge--end">{{ auth.unreadNotifications }}</span>
                 </button>
+                <button class="user-menu__item" @click="openSiteFeedback">
+                  <span>提交反馈</span>
+                </button>
                 <template v-if="auth.canModerate">
                   <div class="user-menu__divider"></div>
                   <template v-if="auth.isSuperAdmin">
@@ -156,6 +159,7 @@
             </button>
             <button class="mobile-nav-item" @click="mobileGoTo('/profile')">个人资料</button>
             <button class="mobile-nav-item" @click="mobileGoTo('/my-submissions')">我的投稿</button>
+            <button class="mobile-nav-item" @click="mobileOpenSiteFeedback">提交反馈</button>
             <button
               v-for="action in topbarActions"
               :key="`mobile-${action.id}`"
@@ -210,6 +214,7 @@
       @dismiss="appStore.dismissPopup"
       @open-link="openLink"
     ></NoticeDialog>
+    <SiteFeedbackDialog v-model:visible="showSiteFeedback" @submitted="onSiteFeedbackSubmitted" />
 
     <main class="app-shell__main">
       <router-view></router-view>
@@ -234,6 +239,7 @@ import { useContextMenu } from '@/composables/useContextMenu'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import NoticeDialog from '@/components/NoticeDialog.vue'
 import SiteFooter from '@/components/SiteFooter.vue'
+import SiteFeedbackDialog from '@/components/feedback/SiteFeedbackDialog.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -246,6 +252,7 @@ const mobileMenuOpen = ref(false)
 const adminMenuOpen = ref(false)
 const mobileAdminMenuOpen = ref(false)
 const searchKeyword = ref('')
+const showSiteFeedback = ref(false)
 const { showContextMenu } = useContextMenu()
 
 const adminBadgeVisible = computed(() => auth.canModerate && adminStore.pendingTotal > 0)
@@ -259,7 +266,14 @@ const menuContext = computed(() => ({
 const adminMenuItems = computed(() => {
   const coreMenus = resolveVisibleMenus(coreAdminMenuItems, menuContext.value)
   const pluginMenus = getPluginMenus('admin', menuContext.value)
-  return [...coreMenus, ...pluginMenus].sort((a, b) => (a.order || 0) - (b.order || 0))
+  const allMenus = [...coreMenus, ...pluginMenus].sort((a, b) => (a.order || 0) - (b.order || 0))
+  
+  return allMenus.map((item) => {
+    if (item.to === '/admin/feedback' && adminStore.pendingFeedbacks > 0) {
+      return { ...item, badge: adminStore.pendingFeedbacks }
+    }
+    return item
+  })
 })
 
 const reviewerQuickMenuItems = computed(() =>
@@ -393,6 +407,20 @@ function openLink(link) {
     return
   }
   router.push(link)
+}
+
+function openSiteFeedback() {
+  menuOpen.value = false
+  showSiteFeedback.value = true
+}
+
+function mobileOpenSiteFeedback() {
+  mobileMenuOpen.value = false
+  showSiteFeedback.value = true
+}
+
+function onSiteFeedbackSubmitted() {
+  showToast('感谢你的反馈！')
 }
 </script>
 

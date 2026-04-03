@@ -52,7 +52,8 @@
 
       <div class="audit-console__stream">
       <div v-for="entry in filteredLogs" :key="entry.id" class="audit-line" :class="`audit-line--${entry.level}`">
-        <span class="audit-time">[{{ formatTime(entry.time) }}]</span>
+        <span class="audit-level-tag" :class="`audit-level-tag--${entry.level}`">[{{ levelTag(entry.level) }}]</span>
+        <span class="audit-time">{{ formatTime(entry.time) }}</span>
         <span class="audit-action" :class="`audit-action--${entry.level}`">{{ entry.action }}</span>
         <span class="audit-desc">{{ entry.description }}</span>
         <button v-if="entry.actor?.uid" class="audit-user audit-user--actor" @click="goUser(entry.actor.uid)">{{ entry.actor.label }}</button>
@@ -246,6 +247,11 @@ function formatTime(iso) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
+function levelTag(level) {
+  const map = { info: 'INFO', success: 'OK', warn: 'WARN', error: 'ERR' }
+  return map[level] || (level || '').toUpperCase()
+}
+
 function goUser(uid) {
   const path = toUserProfilePath(uid)
   if (path) router.push(path)
@@ -304,6 +310,14 @@ function goImage(slug) {
   line-height: 1.55;
 }
 .audit-time { color: #93c5fd; }
+.audit-level-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  min-width: 42px; text-align: center;
+}
+.audit-level-tag--info { color: #60a5fa; }
+.audit-level-tag--success { color: #4ade80; }
+.audit-level-tag--warn { color: #fbbf24; }
+.audit-level-tag--error { color: #f87171; }
 .audit-action { font-weight: 700; color: #f8fafc; }
 .audit-action--success { color: #86efac; }
 .audit-action--warn { color: #fde68a; }

@@ -519,6 +519,7 @@ export async function invokePluginAction(action, context = {}) {
   return action.onClick({
     ...context,
     api,
+    emit: (event, payload) => emitPluginEvent(event, { ...payload, _source: `action:${action.id}` }),
     plugin,
     pluginId: plugin?.id || action.pluginId || context.pluginId || '',
     pluginName: plugin?.name || action.pluginName || context.pluginName || '',
@@ -1237,6 +1238,12 @@ export async function emitPluginEvent(event, payload = {}) {
     event,
     emittedAt: new Date().toISOString(),
   })
+}
+
+export function onPluginEvent(event, handler) {
+  if (!event || typeof handler !== 'function') return () => {}
+  pluginEventBus.on(event, handler)
+  return () => pluginEventBus.off(event, handler)
 }
 
 export function syncPluginRoutes(router) {
