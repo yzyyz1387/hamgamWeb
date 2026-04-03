@@ -1527,6 +1527,20 @@ mdui-icon {
 }
 .site-footer__name { font-weight: 600; }
 .site-footer__icp { color: #8a9aaa; }
+.site-footer__moe-icp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8a9aaa;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+.site-footer__moe-icp:hover { color: #6750a4; }
+.site-footer__moe-icp-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
 
 /* ===== 用户管理卡片 ===== */
 .admin-user-list { display: grid; gap: 14px; }

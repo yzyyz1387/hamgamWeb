@@ -3,27 +3,32 @@
     <mdui-card class="section-card">
       <div class="section-card__header">
         <div>
-          <div class="eyebrow">账户验证</div>
-          <h1>{{ title }}</h1>
-          <p>{{ description }}</p>
+          <div class="eyebrow">身份验证</div>
+          <h1>{{ statusTitle }}</h1>
+          <p>{{ statusDescription }}</p>
         </div>
       </div>
 
-      <div v-if="loading" class="auth-info-banner">
+      <div v-if="processing" class="auth-info-banner">
         <span class="auth-banner-icon">⏳</span>
-        <span>正在处理链接，请稍候…</span>
+        <span>正在处理验证链接，请稍候…</span>
       </div>
+
       <div v-else-if="errorMsg" class="auth-error-banner">
         <span class="auth-banner-icon">⚠</span>
         <span>{{ errorMsg }}</span>
       </div>
+
       <div v-else class="auth-success-banner">
         <span class="auth-banner-icon">✓</span>
-        <span>验证成功，正在跳转…</span>
+        <span>{{ successMsg }}</span>
       </div>
 
       <div class="action-row" style="margin-top: 18px">
-        <mdui-button variant="filled" @click="goFallback">{{ fallbackLabel }}</mdui-button>
+        <mdui-button variant="filled" :disabled="processing" @click="goNext">
+          {{ nextButtonText }}
+        </mdui-button>
+        <mdui-button variant="text" :disabled="processing" @click="router.replace('/login')">返回登录</mdui-button>
       </div>
     </mdui-card>
   </section>
@@ -32,188 +37,198 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getErrorMessage } from '@/lib/errors'
 import { requireSupabase } from '@/lib/supabase'
+import { getErrorMessage } from '@/lib/errors'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const loading = ref(true)
+const processing = ref(true)
 const errorMsg = ref('')
+const successMsg = ref('验证成功。')
+const nextPath = ref('/login')
+const nextButtonText = ref('继续')
 
-const flowType = computed(() => {
-  const value = readQueryValue(route.query.type || route.query.flow)
-  return value || 'general'
-})
-
-const title = computed(() => (flowType.value === 'recovery' ? '验证重置链接' : '验证邮箱链接'))
-const description = computed(() =>
-  flowType.value === 'recovery'
-    ? '系统将验证你的密码重置链接，并自动进入设置新密码页面。'
-    : '系统将验证链接并完成登录或邮箱确认。',
-)
-const fallbackLabel = computed(() => (flowType.value === 'recovery' ? '返回登录页重新发送' : '返回登录'))
-
-function readQueryValue(value) {
+function readParam(value) {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
 
-function buildTargetPath() {
-  const nextPath = readQueryValue(route.query.next)
-  if (nextPath) return nextPath
+function readHashParams() {
+  if (typeof window === 'undefined') return new URLSearchParams()
+  const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+  if (!rawHash) return new URLSearchParams()
+  if (rawHash.startsWith('/')) {
+    const queryIndex = rawHash.indexOf('?')
+    if (queryIndex === -1) return new URLSearchParams()
+    return new URLSearchParams(rawHash.slice(queryIndex + 1))
+  }
+  return new URLSearchParams(rawHash)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+const flowType = computed(() => {
+  const queryType = readParam(route.query.type)
+  const queryFlow = readParam(route.query.flow)
+  const hashParams = readHashParams()
+  const hashType = readParam(hashParams.get('type'))
+  const hashFlow = readParam(hashParams.get('flow'))
+  return queryType || queryFlow || hashType || hashFlow || 'general'
+})
+
+const statusTitle = computed(() => (flowType.value === 'recovery' ? '正在恢复账号' : '正在验证邮箱'))
+const statusDescription = computed(() =>
+  flowType.value === 'recovery'
+    ? '验证成功后会自动进入密码重设页面。'
+    : '验证成功后会返回登录页。',
+)
+
+function resolveNextPath() {
+  const next = readParam(route.query.next)
+  if (next) return next
   return flowType.value === 'recovery' ? '/reset-password' : '/login'
 }
 
-function readHashParams() {
-  if (typeof window === 'undefined') return new URLSearchParams('')
-  const rawHash = window.location.hash?.replace(/^#/, '') || ''
-  if (!rawHash) return new URLSearchParams('')
-  const queryIndex = rawHash.indexOf('?')
-  const source = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash
-  return new URLSearchParams(source)
-}
-
-function clearUrlHash() {
+function clearUrlNoise() {
   if (typeof window === 'undefined') return
-  const url = new URL(window.location.href)
-  url.hash = ''
-  window.history.replaceState({}, '', url.toString())
+  const target = resolveNextPath()
+  window.history.replaceState({}, document.title, target)
 }
 
-async function goFallback() {
-  await router.replace(flowType.value === 'recovery' ? '/login?recoveryError=1' : '/login')
-}
-
-async function handleTokenHash(tokenHash) {
-  if (flowType.value === 'recovery') {
-    auth.passwordRecoveryError = false
-    auth.setPasswordRecoveryMode(true)
-    await router.replace({
-      path: '/reset-password',
-      query: { token_hash: tokenHash, type: 'recovery' },
-    })
-    return
-  }
-
-  const supabase = requireSupabase()
-  const { error } = await supabase.auth.verifyOtp({
-    token_hash: tokenHash,
-    type: flowType.value || 'signup',
-  })
-  if (error) throw error
-  await router.replace(buildTargetPath())
-}
-
-async function handleCode(code) {
-  const supabase = requireSupabase()
-  const { error } = await supabase.auth.exchangeCodeForSession(code)
-  if (error) throw error
-
-  if (flowType.value === 'recovery' || auth.passwordRecoveryMode) {
-    auth.passwordRecoveryError = false
-    auth.setPasswordRecoveryMode(true)
-    await router.replace('/reset-password')
-    return
-  }
-
-  await router.replace(buildTargetPath())
-}
-
-async function handleHashSession(hashParams) {
-  const accessToken = readQueryValue(hashParams.get('access_token'))
-  const refreshToken = readQueryValue(hashParams.get('refresh_token'))
-  const typeFromHash = readQueryValue(hashParams.get('type'))
-  const errorCode = readQueryValue(hashParams.get('error_code'))
-  const errorDescription = readQueryValue(hashParams.get('error_description'))
-
-  if (errorCode) {
-    throw new Error(decodeURIComponent(errorDescription || '链接无效或已过期，请重新获取。'))
-  }
+async function tryEstablishSessionFromHash(supabase) {
+  const hashParams = readHashParams()
+  const accessToken = hashParams.get('access_token')
+  const refreshToken = hashParams.get('refresh_token')
 
   if (!accessToken || !refreshToken) return false
 
-  const supabase = requireSupabase()
-  const { error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  })
-  if (error) throw error
-
-  clearUrlHash()
-
-  if (flowType.value === 'recovery' || typeFromHash === 'recovery' || auth.passwordRecoveryMode) {
-    auth.passwordRecoveryError = false
-    auth.setPasswordRecoveryMode(true)
-    await router.replace('/reset-password')
+  try {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    })
+    if (error) throw error
+    await sleep(200)
     return true
+  } catch {
+    return false
   }
-
-  await router.replace(buildTargetPath())
-  return true
 }
 
-async function processCallback() {
-  loading.value = true
-  errorMsg.value = ''
-
-  const hashParams = readHashParams()
-  const errorCode = readQueryValue(route.query.error_code || hashParams.get('error_code'))
-  const errorDescription = readQueryValue(route.query.error_description || hashParams.get('error_description'))
-  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash || hashParams.get('token_hash'))
-  const code = readQueryValue(route.query.code || hashParams.get('code'))
+async function tryExchangeCode(supabase) {
+  const code = readParam(route.query.code)
+  if (!code) return false
 
   try {
-    if (errorCode) {
-      throw new Error(decodeURIComponent(errorDescription || '链接无效或已过期，请重新获取。'))
-    }
+    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) throw error
+    await sleep(200)
+    return true
+  } catch {
+    return false
+  }
+}
 
-    if (await handleHashSession(hashParams)) {
-      return
-    }
+async function tryVerifyOtp(supabase) {
+  const tokenHash = readParam(route.query.token_hash || route.query.tokenHash)
+  if (!tokenHash) return false
 
-    if (tokenHash) {
-      await handleTokenHash(tokenHash)
-      return
-    }
+  const type = flowType.value === 'recovery' ? 'recovery' : 'signup'
+  try {
+    const { error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type,
+    })
+    if (error) throw error
+    await sleep(200)
+    return true
+  } catch {
+    return false
+  }
+}
 
-    if (code) {
-      await handleCode(code)
-      return
-    }
-
-    const supabase = requireSupabase()
+async function checkExistingSession(supabase) {
+  try {
     const {
       data: { session },
     } = await supabase.auth.getSession()
-
-    if (session) {
-      if (flowType.value === 'recovery' || auth.passwordRecoveryMode) {
-        auth.passwordRecoveryError = false
-        auth.setPasswordRecoveryMode(true)
-        await router.replace('/reset-password')
-        return
-      }
-      await router.replace(buildTargetPath())
-      return
-    }
-
-    throw new Error(flowType.value === 'recovery' ? '重置链接无效、已过期，或当前浏览器未完成恢复登录，请重新申请一次密码重置。' : '验证链接无效或已过期，请重新操作。')
-  } catch (error) {
-    if (flowType.value === 'recovery') {
-      auth.passwordRecoveryError = true
-      auth.setPasswordRecoveryMode(false)
-    }
-    errorMsg.value = getErrorMessage(error)
-  } finally {
-    loading.value = false
+    return session || null
+  } catch {
+    return null
   }
 }
 
+async function processAuthCallback() {
+  processing.value = true
+  errorMsg.value = ''
+  successMsg.value = ''
+
+  const supabase = requireSupabase()
+  nextPath.value = resolveNextPath()
+  nextButtonText.value = nextPath.value === '/reset-password' ? '前往重设密码' : '前往登录'
+
+  try {
+    const errorCode = readParam(route.query.error_code)
+    const errorDescription = readParam(route.query.error_description)
+    if (errorCode) {
+      throw new Error(decodeURIComponent(errorDescription || '验证链接无效或已过期，请重新操作。'))
+    }
+
+    let handled = false
+
+    handled = (await tryEstablishSessionFromHash(supabase)) || handled
+
+    if (!handled) {
+      handled = (await tryExchangeCode(supabase)) || handled
+    }
+
+    if (!handled) {
+      handled = (await tryVerifyOtp(supabase)) || handled
+    }
+
+    let session = await checkExistingSession(supabase)
+
+    if (!session && !handled) {
+      await sleep(300)
+      session = await checkExistingSession(supabase)
+    }
+
+    if (!session && !handled) {
+      throw new Error('验证链接无效或已过期，请重新操作。')
+    }
+
+    if (flowType.value === 'recovery') {
+      auth.passwordRecoveryError = false
+      auth.setPasswordRecoveryMode(true)
+      successMsg.value = '验证成功，正在进入密码重设页面。'
+    } else {
+      auth.passwordRecoveryError = false
+      auth.setPasswordRecoveryMode(false)
+      successMsg.value = '邮箱验证成功，请继续登录。'
+    }
+
+    clearUrlNoise()
+    await goNext()
+  } catch (error) {
+    auth.passwordRecoveryError = flowType.value === 'recovery'
+    auth.setPasswordRecoveryMode(false)
+    errorMsg.value = getErrorMessage(error)
+  } finally {
+    processing.value = false
+  }
+}
+
+async function goNext() {
+  await router.replace(nextPath.value)
+}
+
 onMounted(() => {
-  processCallback().catch((error) => {
-    loading.value = false
+  processAuthCallback().catch((error) => {
+    processing.value = false
     errorMsg.value = getErrorMessage(error)
   })
 })

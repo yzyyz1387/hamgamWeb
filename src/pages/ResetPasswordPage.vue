@@ -84,24 +84,30 @@ const verified = ref(false)
 const submitting = ref(false)
 
 function sleep(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function readQueryValue(value) {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
 
-function readHashParams() {
-  if (typeof window === 'undefined') return new URLSearchParams('')
-  const rawHash = window.location.hash?.replace(/^#/, '') || ''
-  if (!rawHash) return new URLSearchParams('')
-  const queryIndex = rawHash.indexOf('?')
-  const source = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash
-  return new URLSearchParams(source)
+function clearVerificationParams() {
+  if (typeof window !== 'undefined') {
+    window.history.replaceState({}, document.title, '/reset-password')
+  }
+  router.replace({ name: 'reset-password' }).catch(() => {})
 }
 
-function clearVerificationParams() {
-  router.replace({ name: 'reset-password' }).catch(() => {})
+function readHashParams() {
+  if (typeof window === 'undefined') return new URLSearchParams()
+  const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+  if (!rawHash) return new URLSearchParams()
+  if (rawHash.startsWith('/')) {
+    const queryIndex = rawHash.indexOf('?')
+    if (queryIndex === -1) return new URLSearchParams()
+    return new URLSearchParams(rawHash.slice(queryIndex + 1))
+  }
+  return new URLSearchParams(rawHash)
 }
 
 async function verifyRecoveryAccess() {
@@ -110,17 +116,19 @@ async function verifyRecoveryAccess() {
   errorMsg.value = ''
 
   const supabase = requireSupabase()
-  const hashParams = readHashParams()
-  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash || hashParams.get('token_hash'))
-  const errorCode = readQueryValue(route.query.error_code || hashParams.get('error_code'))
-  const errorDescription = readQueryValue(route.query.error_description || hashParams.get('error_description'))
-  const accessToken = readQueryValue(hashParams.get('access_token'))
-  const refreshToken = readQueryValue(hashParams.get('refresh_token'))
 
   try {
+    const errorCode = readQueryValue(route.query.error_code)
+    const errorDescription = readQueryValue(route.query.error_description)
     if (errorCode) {
       throw new Error(decodeURIComponent(errorDescription || '重置链接无效或已过期，请重新申请一次密码重置。'))
     }
+
+    let handled = false
+
+    const hashParams = readHashParams()
+    const accessToken = hashParams.get('access_token')
+    const refreshToken = hashParams.get('refresh_token')
 
     if (accessToken && refreshToken) {
       const { error } = await supabase.auth.setSession({
@@ -128,38 +136,49 @@ async function verifyRecoveryAccess() {
         refresh_token: refreshToken,
       })
       if (error) throw error
-      auth.passwordRecoveryError = false
-      auth.setPasswordRecoveryMode(true)
-      verified.value = true
-      clearVerificationParams()
-      return
+      await sleep(200)
+      handled = true
     }
 
-    if (tokenHash) {
-      const { error } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type: 'recovery',
-      })
-      if (error) throw error
-      auth.passwordRecoveryError = false
-      auth.setPasswordRecoveryMode(true)
-      verified.value = true
-      clearVerificationParams()
-      return
+    if (!handled) {
+      const code = readQueryValue(route.query.code)
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code)
+        if (error) throw error
+        await sleep(200)
+        handled = true
+      }
+    }
+
+    if (!handled) {
+      const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash)
+      if (tokenHash) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'recovery',
+        })
+        if (error) throw error
+        await sleep(200)
+        handled = true
+      }
     }
 
     const {
       data: { session },
     } = await supabase.auth.getSession()
 
-    if (session) {
-      auth.passwordRecoveryError = false
-      auth.setPasswordRecoveryMode(true)
-      verified.value = true
-      return
+    if (!session && !handled) {
+      await sleep(300)
+      const retry = await supabase.auth.getSession()
+      if (!retry.data.session) {
+        throw new Error('重置链接无效、已过期，或当前浏览器未完成恢复登录，请重新申请一次密码重置。')
+      }
     }
 
-    throw new Error('重置链接无效、已过期，或当前浏览器未完成恢复登录，请重新申请一次密码重置。')
+    auth.passwordRecoveryError = false
+    auth.setPasswordRecoveryMode(true)
+    verified.value = true
+    clearVerificationParams()
   } catch (error) {
     verified.value = false
     auth.passwordRecoveryError = false
