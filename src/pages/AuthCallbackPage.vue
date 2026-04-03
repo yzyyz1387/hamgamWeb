@@ -52,29 +52,49 @@ const nextPath = ref('/login')
 const nextButtonText = ref('继续')
 
 function readParam(value) {
-  return Array.isArray(value) ? value[0] || '' : value || ''
-}
-
-function readHashParams() {
-  if (typeof window === 'undefined') return new URLSearchParams()
-  const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-  if (!rawHash) return new URLSearchParams()
-  if (rawHash.startsWith('/')) {
-    const queryIndex = rawHash.indexOf('?')
-    if (queryIndex === -1) return new URLSearchParams()
-    return new URLSearchParams(rawHash.slice(queryIndex + 1))
-  }
-  return new URLSearchParams(rawHash)
+  if (!value) return ''
+  return Array.isArray(value) ? (value[0] || '') : String(value)
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function extractHashParams() {
+  if (typeof window === 'undefined') return { params: new URLSearchParams(), raw: '' }
+  
+  let hash = window.location.hash || ''
+  if (hash.startsWith('#')) hash = hash.slice(1)
+  
+  if (!hash) return { params: new URLSearchParams(), raw: '' }
+  
+  const params = new URLSearchParams()
+  
+  if (hash.includes('?') || hash.includes('&')) {
+    const searchStr = hash.includes('?') ? hash.split('?')[1] : hash
+    const pairs = searchStr.split('&')
+    for (const pair of pairs) {
+      const [key, ...valueParts] = pair.split('=')
+      if (key && valueParts.length > 0) {
+        params.set(key, decodeURIComponent(valueParts.join('=')))
+      }
+    }
+  } else {
+    try {
+      const urlParams = new URLSearchParams(hash)
+      urlParams.forEach((value, key) => params.set(key, value))
+    } catch {
+      // 如果解析失败，尝试手动分割
+    }
+  }
+  
+  return { params, raw: hash }
+}
+
 const flowType = computed(() => {
   const queryType = readParam(route.query.type)
   const queryFlow = readParam(route.query.flow)
-  const hashParams = readHashParams()
+  const { params: hashParams } = extractHashParams()
   const hashType = readParam(hashParams.get('type'))
   const hashFlow = readParam(hashParams.get('flow'))
   return queryType || queryFlow || hashType || hashFlow || 'general'
@@ -95,71 +115,108 @@ function resolveNextPath() {
 
 function clearUrlNoise() {
   if (typeof window === 'undefined') return
-  const target = resolveNextPath()
-  window.history.replaceState({}, document.title, target)
+  try {
+    const target = resolveNextPath()
+    window.history.replaceState({}, document.title || '', target)
+  } catch {
+    // 忽略 URL 清理失败
+  }
 }
 
-async function tryEstablishSessionFromHash(supabase) {
-  const hashParams = readHashParams()
+async function attemptSetSessionFromHash(supabase, retryCount = 0) {
+  const { params: hashParams } = extractHashParams()
   const accessToken = hashParams.get('access_token')
   const refreshToken = hashParams.get('refresh_token')
 
   if (!accessToken || !refreshToken) return false
 
-  try {
-    const { error } = await supabase.auth.setSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-    })
-    if (error) throw error
-    await sleep(200)
-    return true
-  } catch {
-    return false
+  for (let i = 0; i <= retryCount; i++) {
+    try {
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      if (error) {
+        console.warn('[AuthCallback] setSession attempt', i + 1, 'failed:', error.message)
+        if (i < retryCount) await sleep(300 * (i + 1))
+        continue
+      }
+      
+      await sleep(200)
+      return true
+    } catch (err) {
+      console.warn('[AuthCallback] setSession attempt', i + 1, 'error:', err)
+      if (i < retryCount) await sleep(300 * (i + 1))
+    }
   }
+  return false
 }
 
-async function tryExchangeCode(supabase) {
+async function attemptExchangeCode(supabase, retryCount = 0) {
   const code = readParam(route.query.code)
   if (!code) return false
 
-  try {
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) throw error
-    await sleep(200)
-    return true
-  } catch {
-    return false
+  for (let i = 0; i <= retryCount; i++) {
+    try {
+      const { error } = await supabase.auth.exchangeCodeForSession(code)
+      if (error) {
+        console.warn('[AuthCallback] exchangeCode attempt', i + 1, 'failed:', error.message)
+        if (i < retryCount) await sleep(300 * (i + 1))
+        continue
+      }
+      await sleep(200)
+      return true
+    } catch (err) {
+      console.warn('[AuthCallback] exchangeCode attempt', i + 1, 'error:', err)
+      if (i < retryCount) await sleep(300 * (i + 1))
+    }
   }
+  return false
 }
 
-async function tryVerifyOtp(supabase) {
+async function attemptVerifyOtp(supabase, retryCount = 0) {
   const tokenHash = readParam(route.query.token_hash || route.query.tokenHash)
   if (!tokenHash) return false
 
   const type = flowType.value === 'recovery' ? 'recovery' : 'signup'
-  try {
-    const { error } = await supabase.auth.verifyOtp({
-      token_hash: tokenHash,
-      type,
-    })
-    if (error) throw error
-    await sleep(200)
-    return true
-  } catch {
-    return false
+
+  for (let i = 0; i <= retryCount; i++) {
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        token_hash: tokenHash,
+        type,
+      })
+      if (error) {
+        console.warn('[AuthCallback] verifyOtp attempt', i + 1, 'failed:', error.message)
+        if (i < retryCount) await sleep(300 * (i + 1))
+        continue
+      }
+      await sleep(200)
+      return true
+    } catch (err) {
+      console.warn('[AuthCallback] verifyOtp attempt', i + 1, 'error:', err)
+      if (i < retryCount) await sleep(300 * (i + 1))
+    }
   }
+  return false
 }
 
-async function checkExistingSession(supabase) {
-  try {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    return session || null
-  } catch {
-    return null
+async function checkSessionWithRetry(supabase, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (session) return session
+      
+      console.warn('[AuthCallback] getSession attempt', i + 1, ': no session')
+      if (i < maxRetries - 1) await sleep(400 * (i + 1))
+    } catch (err) {
+      console.warn('[AuthCallback] getSession attempt', i + 1, 'error:', err)
+      if (i < maxRetries - 1) await sleep(400 * (i + 1))
+    }
   }
+  return null
 }
 
 async function processAuthCallback() {
@@ -174,28 +231,39 @@ async function processAuthCallback() {
   try {
     const errorCode = readParam(route.query.error_code)
     const errorDescription = readParam(route.query.error_description)
-    if (errorCode) {
-      throw new Error(decodeURIComponent(errorDescription || '验证链接无效或已过期，请重新操作。'))
+    
+    const { params: hashParams } = extractHashParams()
+    const hashErrorCode = readParam(hashParams.get('error_code'))
+    const hashErrorDesc = readParam(hashParams.get('error_description'))
+
+    const finalErrorCode = errorCode || hashErrorCode
+    const finalErrorDesc = errorDescription || hashErrorDesc
+
+    if (finalErrorCode) {
+      throw new Error(decodeURIComponent(finalErrorDesc || '验证链接无效或已过期，请重新操作。'))
     }
+
+    console.log('[AuthCallback] Starting process, flowType:', flowType.value)
+    console.log('[AuthCallback] Hash params:', Object.fromEntries(extractHashParams().params.entries()))
+    console.log('[AuthCallback] Query params:', { ...route.query })
 
     let handled = false
 
-    handled = (await tryEstablishSessionFromHash(supabase)) || handled
+    handled = (await attemptSetSessionFromHash(supabase, 2)) || handled
+    console.log('[AuthCallback] After setSession:', { handled })
 
     if (!handled) {
-      handled = (await tryExchangeCode(supabase)) || handled
+      handled = (await attemptExchangeCode(supabase, 2)) || handled
+      console.log('[AuthCallback] After exchangeCode:', { handled })
     }
 
     if (!handled) {
-      handled = (await tryVerifyOtp(supabase)) || handled
+      handled = (await attemptVerifyOtp(supabase, 2)) || handled
+      console.log('[AuthCallback] After verifyOtp:', { handled })
     }
 
-    let session = await checkExistingSession(supabase)
-
-    if (!session && !handled) {
-      await sleep(300)
-      session = await checkExistingSession(supabase)
-    }
+    const session = await checkSessionWithRetry(supabase, 4)
+    console.log('[AuthCallback] Final session check:', !!session)
 
     if (!session && !handled) {
       throw new Error('验证链接无效或已过期，请重新操作。')
@@ -214,6 +282,7 @@ async function processAuthCallback() {
     clearUrlNoise()
     await goNext()
   } catch (error) {
+    console.error('[AuthCallback] Error:', error)
     auth.passwordRecoveryError = flowType.value === 'recovery'
     auth.setPasswordRecoveryMode(false)
     errorMsg.value = getErrorMessage(error)
@@ -226,8 +295,21 @@ async function goNext() {
   await router.replace(nextPath.value)
 }
 
-onMounted(() => {
+onMounted(async () => {
+  console.log('[AuthCallback] Mounted, waiting for auth init...')
+  
+  await sleep(100)
+  
+  if (!auth.initialized) {
+    console.log('[AuthCallback] Auth not initialized, waiting...')
+    await auth.init()
+    await sleep(200)
+  }
+  
+  console.log('[AuthCallback] Auth initialized, starting callback process')
+  
   processAuthCallback().catch((error) => {
+    console.error('[AuthCallback] Unhandled error:', error)
     processing.value = false
     errorMsg.value = getErrorMessage(error)
   })

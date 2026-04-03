@@ -88,26 +88,50 @@ function sleep(ms) {
 }
 
 function readQueryValue(value) {
-  return Array.isArray(value) ? value[0] || '' : value || ''
+  if (!value) return ''
+  return Array.isArray(value) ? (value[0] || '') : String(value)
 }
 
 function clearVerificationParams() {
   if (typeof window !== 'undefined') {
-    window.history.replaceState({}, document.title, '/reset-password')
+    try {
+      window.history.replaceState({}, document.title || '', '/reset-password')
+    } catch {
+      // 忽略
+    }
   }
   router.replace({ name: 'reset-password' }).catch(() => {})
 }
 
-function readHashParams() {
-  if (typeof window === 'undefined') return new URLSearchParams()
-  const rawHash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-  if (!rawHash) return new URLSearchParams()
-  if (rawHash.startsWith('/')) {
-    const queryIndex = rawHash.indexOf('?')
-    if (queryIndex === -1) return new URLSearchParams()
-    return new URLSearchParams(rawHash.slice(queryIndex + 1))
+function extractHashParams() {
+  if (typeof window === 'undefined') return { params: new URLSearchParams(), raw: '' }
+  
+  let hash = window.location.hash || ''
+  if (hash.startsWith('#')) hash = hash.slice(1)
+  
+  if (!hash) return { params: new URLSearchParams(), raw: '' }
+  
+  const params = new URLSearchParams()
+  
+  if (hash.includes('?') || hash.includes('&')) {
+    const searchStr = hash.includes('?') ? hash.split('?')[1] : hash
+    const pairs = searchStr.split('&')
+    for (const pair of pairs) {
+      const [key, ...valueParts] = pair.split('=')
+      if (key && valueParts.length > 0) {
+        params.set(key, decodeURIComponent(valueParts.join('=')))
+      }
+    }
+  } else {
+    try {
+      const urlParams = new URLSearchParams(hash)
+      urlParams.forEach((value, key) => params.set(key, value))
+    } catch {
+      // 解析失败时忽略
+    }
   }
-  return new URLSearchParams(rawHash)
+  
+  return { params, raw: hash }
 }
 
 async function verifyRecoveryAccess() {
@@ -115,71 +139,128 @@ async function verifyRecoveryAccess() {
   verified.value = false
   errorMsg.value = ''
 
+  console.log('[ResetPassword] Starting verification...')
+
   const supabase = requireSupabase()
 
   try {
     const errorCode = readQueryValue(route.query.error_code)
     const errorDescription = readQueryValue(route.query.error_description)
-    if (errorCode) {
-      throw new Error(decodeURIComponent(errorDescription || '重置链接无效或已过期，请重新申请一次密码重置。'))
+    
+    const { params: hashParams } = extractHashParams()
+    const hashErrorCode = readQueryValue(hashParams.get('error_code'))
+    const hashErrorDesc = readQueryValue(hashParams.get('error_description'))
+
+    if (errorCode || hashErrorCode) {
+      throw new Error(decodeURIComponent(errorDescription || hashErrorDesc || '重置链接无效或已过期，请重新申请一次密码重置。'))
     }
 
     let handled = false
 
-    const hashParams = readHashParams()
     const accessToken = hashParams.get('access_token')
     const refreshToken = hashParams.get('refresh_token')
+    
+    console.log('[ResetPassword] Hash params:', Object.fromEntries(hashParams.entries()))
+    console.log('[ResetPassword] Query params:', { ...route.query })
 
     if (accessToken && refreshToken) {
-      const { error } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      })
-      if (error) throw error
-      await sleep(200)
-      handled = true
+      for (let i = 0; i < 3; i++) {
+        try {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          })
+          if (error) {
+            console.warn('[ResetPassword] setSession attempt', i + 1, 'failed:', error.message)
+            if (i < 2) await sleep(300 * (i + 1))
+            continue
+          }
+          await sleep(200)
+          handled = true
+          break
+        } catch (err) {
+          console.warn('[ResetPassword] setSession attempt', i + 1, 'error:', err)
+          if (i < 2) await sleep(300 * (i + 1))
+        }
+      }
     }
 
     if (!handled) {
       const code = readQueryValue(route.query.code)
       if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code)
-        if (error) throw error
-        await sleep(200)
-        handled = true
+        for (let i = 0; i < 3; i++) {
+          try {
+            const { error } = await supabase.auth.exchangeCodeForSession(code)
+            if (error) {
+              console.warn('[ResetPassword] exchangeCode attempt', i + 1, 'failed:', error.message)
+              if (i < 2) await sleep(300 * (i + 1))
+              continue
+            }
+            await sleep(200)
+            handled = true
+            break
+          } catch (err) {
+            console.warn('[ResetPassword] exchangeCode attempt', i + 1, 'error:', err)
+            if (i < 2) await sleep(300 * (i + 1))
+          }
+        }
       }
     }
 
     if (!handled) {
       const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash)
       if (tokenHash) {
-        const { error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: 'recovery',
-        })
-        if (error) throw error
-        await sleep(200)
-        handled = true
+        for (let i = 0; i < 3; i++) {
+          try {
+            const { error } = await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: 'recovery',
+            })
+            if (error) {
+              console.warn('[ResetPassword] verifyOtp attempt', i + 1, 'failed:', error.message)
+              if (i < 2) await sleep(300 * (i + 1))
+              continue
+            }
+            await sleep(200)
+            handled = true
+            break
+          } catch (err) {
+            console.warn('[ResetPassword] verifyOtp attempt', i + 1, 'error:', err)
+            if (i < 2) await sleep(300 * (i + 1))
+          }
+        }
       }
     }
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-
-    if (!session && !handled) {
-      await sleep(300)
-      const retry = await supabase.auth.getSession()
-      if (!retry.data.session) {
-        throw new Error('重置链接无效、已过期，或当前浏览器未完成恢复登录，请重新申请一次密码重置。')
+    for (let i = 0; i < 4; i++) {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        
+        if (session) {
+          console.log('[ResetPassword] Session found on attempt', i + 1)
+          auth.passwordRecoveryError = false
+          auth.setPasswordRecoveryMode(true)
+          verified.value = true
+          clearVerificationParams()
+          return
+        }
+        
+        console.warn('[ResetPassword] getSession attempt', i + 1, ': no session')
+        if (i < 3) await sleep(400 * (i + 1))
+      } catch (err) {
+        console.warn('[ResetPassword] getSession attempt', i + 1, 'error:', err)
+        if (i < 3) await sleep(400 * (i + 1))
       }
     }
 
-    auth.passwordRecoveryError = false
-    auth.setPasswordRecoveryMode(true)
-    verified.value = true
-    clearVerificationParams()
+    if (!handled) {
+      throw new Error('重置链接无效、已过期，或当前浏览器未完成恢复登录，请重新申请一次密码重置。')
+    }
+
   } catch (error) {
+    console.error('[ResetPassword] Verification failed:', error)
     verified.value = false
     auth.passwordRecoveryError = false
     auth.setPasswordRecoveryMode(false)
@@ -237,8 +318,21 @@ async function submit() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  console.log('[ResetPassword] Mounted, waiting for auth init...')
+  
+  await sleep(100)
+  
+  if (!auth.initialized) {
+    console.log('[ResetPassword] Auth not initialized, waiting...')
+    await auth.init()
+    await sleep(200)
+  }
+  
+  console.log('[ResetPassword] Auth initialized, starting verification')
+  
   verifyRecoveryAccess().catch((error) => {
+    console.error('[ResetPassword] Unhandled error:', error)
     verifying.value = false
     verified.value = false
     errorMsg.value = getErrorMessage(error)
