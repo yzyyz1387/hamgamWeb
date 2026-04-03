@@ -66,6 +66,22 @@ function buildTargetPath() {
   return flowType.value === 'recovery' ? '/reset-password' : '/login'
 }
 
+function readHashParams() {
+  if (typeof window === 'undefined') return new URLSearchParams('')
+  const rawHash = window.location.hash?.replace(/^#/, '') || ''
+  if (!rawHash) return new URLSearchParams('')
+  const queryIndex = rawHash.indexOf('?')
+  const source = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash
+  return new URLSearchParams(source)
+}
+
+function clearUrlHash() {
+  if (typeof window === 'undefined') return
+  const url = new URL(window.location.href)
+  url.hash = ''
+  window.history.replaceState({}, '', url.toString())
+}
+
 async function goFallback() {
   await router.replace(flowType.value === 'recovery' ? '/login?recoveryError=1' : '/login')
 }
@@ -105,18 +121,56 @@ async function handleCode(code) {
   await router.replace(buildTargetPath())
 }
 
+async function handleHashSession(hashParams) {
+  const accessToken = readQueryValue(hashParams.get('access_token'))
+  const refreshToken = readQueryValue(hashParams.get('refresh_token'))
+  const typeFromHash = readQueryValue(hashParams.get('type'))
+  const errorCode = readQueryValue(hashParams.get('error_code'))
+  const errorDescription = readQueryValue(hashParams.get('error_description'))
+
+  if (errorCode) {
+    throw new Error(decodeURIComponent(errorDescription || '链接无效或已过期，请重新获取。'))
+  }
+
+  if (!accessToken || !refreshToken) return false
+
+  const supabase = requireSupabase()
+  const { error } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  })
+  if (error) throw error
+
+  clearUrlHash()
+
+  if (flowType.value === 'recovery' || typeFromHash === 'recovery' || auth.passwordRecoveryMode) {
+    auth.passwordRecoveryError = false
+    auth.setPasswordRecoveryMode(true)
+    await router.replace('/reset-password')
+    return true
+  }
+
+  await router.replace(buildTargetPath())
+  return true
+}
+
 async function processCallback() {
   loading.value = true
   errorMsg.value = ''
 
-  const errorCode = readQueryValue(route.query.error_code)
-  const errorDescription = readQueryValue(route.query.error_description)
-  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash)
-  const code = readQueryValue(route.query.code)
+  const hashParams = readHashParams()
+  const errorCode = readQueryValue(route.query.error_code || hashParams.get('error_code'))
+  const errorDescription = readQueryValue(route.query.error_description || hashParams.get('error_description'))
+  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash || hashParams.get('token_hash'))
+  const code = readQueryValue(route.query.code || hashParams.get('code'))
 
   try {
     if (errorCode) {
       throw new Error(decodeURIComponent(errorDescription || '链接无效或已过期，请重新获取。'))
+    }
+
+    if (await handleHashSession(hashParams)) {
+      return
     }
 
     if (tokenHash) {

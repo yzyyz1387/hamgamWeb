@@ -91,6 +91,15 @@ function readQueryValue(value) {
   return Array.isArray(value) ? value[0] || '' : value || ''
 }
 
+function readHashParams() {
+  if (typeof window === 'undefined') return new URLSearchParams('')
+  const rawHash = window.location.hash?.replace(/^#/, '') || ''
+  if (!rawHash) return new URLSearchParams('')
+  const queryIndex = rawHash.indexOf('?')
+  const source = queryIndex >= 0 ? rawHash.slice(queryIndex + 1) : rawHash
+  return new URLSearchParams(source)
+}
+
 function clearVerificationParams() {
   router.replace({ name: 'reset-password' }).catch(() => {})
 }
@@ -101,13 +110,29 @@ async function verifyRecoveryAccess() {
   errorMsg.value = ''
 
   const supabase = requireSupabase()
-  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash)
-  const errorCode = readQueryValue(route.query.error_code)
-  const errorDescription = readQueryValue(route.query.error_description)
+  const hashParams = readHashParams()
+  const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash || hashParams.get('token_hash'))
+  const errorCode = readQueryValue(route.query.error_code || hashParams.get('error_code'))
+  const errorDescription = readQueryValue(route.query.error_description || hashParams.get('error_description'))
+  const accessToken = readQueryValue(hashParams.get('access_token'))
+  const refreshToken = readQueryValue(hashParams.get('refresh_token'))
 
   try {
     if (errorCode) {
       throw new Error(decodeURIComponent(errorDescription || '重置链接无效或已过期，请重新申请一次密码重置。'))
+    }
+
+    if (accessToken && refreshToken) {
+      const { error } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      })
+      if (error) throw error
+      auth.passwordRecoveryError = false
+      auth.setPasswordRecoveryMode(true)
+      verified.value = true
+      clearVerificationParams()
+      return
     }
 
     if (tokenHash) {
