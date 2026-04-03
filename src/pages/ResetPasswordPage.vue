@@ -134,12 +134,34 @@ function extractHashParams() {
   return { params, raw: hash }
 }
 
+function extractTokenHash() {
+  const fromQuery = readQueryValue(route.query.token_hash) || readQueryValue(route.query.tokenHash)
+  if (fromQuery) return fromQuery
+  
+  const { params: hashParams } = extractHashParams()
+  const fromHash = readQueryValue(hashParams.get('token_hash')) || readQueryValue(hashParams.get('tokenHash'))
+  if (fromHash) return fromHash
+  
+  const rawType = readQueryValue(route.query.type) || ''
+  if (rawType.includes('token_hash=')) {
+    const match = rawType.match(/token_hash=([a-f0-9]+)/i)
+    if (match) return match[1]
+  }
+  
+  const fullPath = window.location.href || ''
+  const urlMatch = fullPath.match(/token_hash=([a-f0-9]{10,})/i)
+  if (urlMatch) return urlMatch[1]
+  
+  return null
+}
+
 async function verifyRecoveryAccess() {
   verifying.value = true
   verified.value = false
   errorMsg.value = ''
 
   console.log('[ResetPassword] Starting verification...')
+  console.log('[ResetPassword] Full URL:', window.location.href)
 
   const supabase = requireSupabase()
 
@@ -155,13 +177,13 @@ async function verifyRecoveryAccess() {
       throw new Error(decodeURIComponent(errorDescription || hashErrorDesc || '重置链接无效或已过期，请重新申请一次密码重置。'))
     }
 
+    console.log('[ResetPassword] Query params:', { ...route.query })
+    console.log('[ResetPassword] Hash params:', Object.fromEntries(hashParams.entries()))
+
     let handled = false
 
     const accessToken = hashParams.get('access_token')
     const refreshToken = hashParams.get('refresh_token')
-    
-    console.log('[ResetPassword] Hash params:', Object.fromEntries(hashParams.entries()))
-    console.log('[ResetPassword] Query params:', { ...route.query })
 
     if (accessToken && refreshToken) {
       for (let i = 0; i < 3; i++) {
@@ -208,26 +230,40 @@ async function verifyRecoveryAccess() {
     }
 
     if (!handled) {
-      const tokenHash = readQueryValue(route.query.token_hash || route.query.tokenHash)
+      const tokenHash = extractTokenHash()
+      
+      console.log('[ResetPassword] Extracted token_hash:', tokenHash)
+      
       if (tokenHash) {
-        for (let i = 0; i < 3; i++) {
-          try {
-            const { error } = await supabase.auth.verifyOtp({
-              token_hash: tokenHash,
-              type: 'recovery',
-            })
-            if (error) {
-              console.warn('[ResetPassword] verifyOtp attempt', i + 1, 'failed:', error.message)
+        const otpTypes = ['recovery', 'signup', 'email', 'invite', 'magiclink']
+        
+        for (const otpType of otpTypes) {
+          for (let i = 0; i < 3; i++) {
+            try {
+              console.log(`[ResetPassword] verifyOtp attempt ${i + 1} with type: ${otpType}`)
+              
+              const { error } = await supabase.auth.verifyOtp({
+                token_hash: tokenHash,
+                type: otpType,
+              })
+              
+              if (error) {
+                console.warn(`[ResetPassword] verifyOtp (${otpType}) attempt`, i + 1, 'failed:', error.message, error.status)
+                if (i < 2) await sleep(300 * (i + 1))
+                continue
+              }
+              
+              console.log(`[ResetPassword] verifyOtp (${otpType}) succeeded on attempt`, i + 1)
+              await sleep(200)
+              handled = true
+              break
+            } catch (err) {
+              console.warn(`[ResetPassword] verifyOtp (${otpType}) attempt`, i + 1, 'error:', err)
               if (i < 2) await sleep(300 * (i + 1))
-              continue
             }
-            await sleep(200)
-            handled = true
-            break
-          } catch (err) {
-            console.warn('[ResetPassword] verifyOtp attempt', i + 1, 'error:', err)
-            if (i < 2) await sleep(300 * (i + 1))
           }
+          
+          if (handled) break
         }
       }
     }
@@ -320,6 +356,8 @@ async function submit() {
 
 onMounted(async () => {
   console.log('[ResetPassword] Mounted, waiting for auth init...')
+  console.log('[ResetPassword] Current URL:', window.location.href)
+  console.log('[ResetPassword] Route query:', JSON.stringify(route.query))
   
   await sleep(100)
   

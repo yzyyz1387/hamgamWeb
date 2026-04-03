@@ -91,13 +91,43 @@ function extractHashParams() {
   return { params, raw: hash }
 }
 
+function parseFlowType(rawType) {
+  if (!rawType) return 'general'
+  
+  const str = String(rawType).toLowerCase().trim()
+  
+  if (str === 'recovery' || str === 'signup' || str === 'email' || str === 'invite' || str === 'magiclink') {
+    return str
+  }
+  
+  if (str.includes('recovery')) return 'recovery'
+  if (str.includes('signup')) return 'signup'
+  if (str.includes('email')) return 'email'
+  if (str.includes('invite')) return 'invite'
+  
+  if (str.includes('reset') || str.includes('password')) return 'recovery'
+  
+  return 'general'
+}
+
 const flowType = computed(() => {
   const queryType = readParam(route.query.type)
   const queryFlow = readParam(route.query.flow)
   const { params: hashParams } = extractHashParams()
   const hashType = readParam(hashParams.get('type'))
   const hashFlow = readParam(hashParams.get('flow'))
-  return queryType || queryFlow || hashType || hashFlow || 'general'
+  
+  const rawType = queryType || queryFlow || hashType || hashFlow
+  
+  console.log('[AuthCallback] Raw type values:', {
+    queryType,
+    queryFlow,
+    hashType,
+    hashFlow,
+    rawType,
+  })
+  
+  return parseFlowType(rawType)
 })
 
 const statusTitle = computed(() => (flowType.value === 'recovery' ? '正在恢复账号' : '正在验证邮箱'))
@@ -109,7 +139,7 @@ const statusDescription = computed(() =>
 
 function resolveNextPath() {
   const next = readParam(route.query.next)
-  if (next) return next
+  if (next && next !== '/' && !next.includes('undefined')) return next
   return flowType.value === 'recovery' ? '/reset-password' : '/login'
 }
 
@@ -121,6 +151,27 @@ function clearUrlNoise() {
   } catch {
     // 忽略 URL 清理失败
   }
+}
+
+function extractTokenHash() {
+  const fromQuery = readParam(route.query.token_hash) || readParam(route.query.tokenHash)
+  if (fromQuery) return fromQuery
+  
+  const { params: hashParams } = extractHashParams()
+  const fromHash = readParam(hashParams.get('token_hash')) || readParam(hashParams.get('tokenHash'))
+  if (fromHash) return fromHash
+  
+  const rawType = readParam(route.query.type) || ''
+  if (rawType.includes('token_hash=')) {
+    const match = rawType.match(/token_hash=([a-f0-9]+)/i)
+    if (match) return match[1]
+  }
+  
+  const fullPath = window.location.href || ''
+  const urlMatch = fullPath.match(/token_hash=([a-f0-9]{10,})/i)
+  if (urlMatch) return urlMatch[1]
+  
+  return null
 }
 
 async function attemptSetSessionFromHash(supabase, retryCount = 0) {
@@ -175,29 +226,44 @@ async function attemptExchangeCode(supabase, retryCount = 0) {
 }
 
 async function attemptVerifyOtp(supabase, retryCount = 0) {
-  const tokenHash = readParam(route.query.token_hash || route.query.tokenHash)
-  if (!tokenHash) return false
+  const tokenHash = extractTokenHash()
+  
+  console.log('[AuthCallback] Extracted token_hash:', tokenHash)
+  console.log('[AuthCallback] Using flowType for OTP:', flowType.value)
+  
+  if (!tokenHash) {
+    console.warn('[AuthCallback] No token_hash found anywhere')
+    return false
+  }
 
-  const type = flowType.value === 'recovery' ? 'recovery' : 'signup'
-
-  for (let i = 0; i <= retryCount; i++) {
-    try {
-      const { error } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type,
-      })
-      if (error) {
-        console.warn('[AuthCallback] verifyOtp attempt', i + 1, 'failed:', error.message)
+  const otpTypes = ['recovery', 'signup', 'email', 'invite', 'magiclink']
+  
+  for (const otpType of otpTypes) {
+    for (let i = 0; i <= retryCount; i++) {
+      try {
+        console.log(`[AuthCallback] verifyOtp attempt ${i + 1} with type: ${otpType}`)
+        
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: otpType,
+        })
+        
+        if (error) {
+          console.warn(`[AuthCallback] verifyOtp (${otpType}) attempt`, i + 1, 'failed:', error.message, error.status)
+          if (i < retryCount) await sleep(300 * (i + 1))
+          continue
+        }
+        
+        console.log(`[AuthCallback] verifyOtp (${otpType}) succeeded on attempt`, i + 1)
+        await sleep(200)
+        return true
+      } catch (err) {
+        console.warn(`[AuthCallback] verifyOtp (${otpType}) attempt`, i + 1, 'error:', err)
         if (i < retryCount) await sleep(300 * (i + 1))
-        continue
       }
-      await sleep(200)
-      return true
-    } catch (err) {
-      console.warn('[AuthCallback] verifyOtp attempt', i + 1, 'error:', err)
-      if (i < retryCount) await sleep(300 * (i + 1))
     }
   }
+  
   return false
 }
 
@@ -246,6 +312,8 @@ async function processAuthCallback() {
     console.log('[AuthCallback] Starting process, flowType:', flowType.value)
     console.log('[AuthCallback] Hash params:', Object.fromEntries(extractHashParams().params.entries()))
     console.log('[AuthCallback] Query params:', { ...route.query })
+    console.log('[AuthCallback] Full URL:', window.location.href)
+    console.log('[AuthCallback] Full hash:', window.location.hash)
 
     let handled = false
 
@@ -258,7 +326,7 @@ async function processAuthCallback() {
     }
 
     if (!handled) {
-      handled = (await attemptVerifyOtp(supabase, 2)) || handled
+      handled = (await attemptVerifyOtp(supabase, 1)) || handled
       console.log('[AuthCallback] After verifyOtp:', { handled })
     }
 
@@ -297,6 +365,9 @@ async function goNext() {
 
 onMounted(async () => {
   console.log('[AuthCallback] Mounted, waiting for auth init...')
+  console.log('[AuthCallback] Current URL:', window.location.href)
+  console.log('[AuthCallback] Route query:', JSON.stringify(route.query))
+  console.log('[AuthCallback] Route hash:', window.location.hash)
   
   await sleep(100)
   
