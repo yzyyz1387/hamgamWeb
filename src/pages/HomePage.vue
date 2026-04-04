@@ -76,9 +76,7 @@
           <mdui-circular-progress></mdui-circular-progress>
           <div>正在加载图片…</div>
         </div>
-        <div v-else-if="pagedImages.length" class="gallery-grid">
-          <GalleryCard v-for="image in pagedImages" :key="image.id" :image="image"></GalleryCard>
-        </div>
+        <MasonryGallery v-else-if="pagedImages.length" :images="pagedImages"></MasonryGallery>
         <div v-else class="empty-state">没有找到匹配结果，试试换个搜索词或重新乱序。</div>
 
         <!-- 加载更多触发器 -->
@@ -103,7 +101,7 @@ import { showToast } from '@/lib/toast'
 import { supabaseEnabled, requireSupabase } from '@/lib/supabase'
 import { useGalleryStore } from '@/stores/gallery'
 import { useAppStore } from '@/stores/app'
-import GalleryCard from '@/components/GalleryCard.vue'
+import MasonryGallery from '@/components/MasonryGallery.vue'
 import SetupRequiredCard from '@/components/SetupRequiredCard.vue'
 import AppTextField from '@/components/form/AppTextField.vue'
 

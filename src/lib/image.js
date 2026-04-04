@@ -18,7 +18,36 @@ export function normalizeReactionSummary(summary) {
     .sort((a, b) => b.count - a.count || a.emoji.localeCompare(b.emoji))
 }
 
+function pickNumericDimension(...values) {
+  for (const value of values) {
+    const numeric = Number(value)
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric
+    }
+  }
+  return null
+}
+
 export function normalizeImageRecord(record) {
+  const metadata = record?.metadata && typeof record.metadata === 'object' ? record.metadata : {}
+  const metadataDimensions = metadata.dimensions && typeof metadata.dimensions === 'object'
+    ? metadata.dimensions
+    : {}
+  const width = pickNumericDimension(
+    record?.image_width,
+    record?.width,
+    metadata?.image_width,
+    metadata?.width,
+    metadataDimensions?.width,
+  )
+  const height = pickNumericDimension(
+    record?.image_height,
+    record?.height,
+    metadata?.image_height,
+    metadata?.height,
+    metadataDimensions?.height,
+  )
+
   if (!record) return null
   return {
     ...record,
@@ -33,5 +62,7 @@ export function normalizeImageRecord(record) {
     original_image_url: record.original_image_url || null,
     edit_requested_at: record.edit_requested_at || null,
     edit_requested_by: record.edit_requested_by || null,
+    image_width: width,
+    image_height: height,
   }
 }
