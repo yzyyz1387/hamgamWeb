@@ -1,0 +1,4 @@
+﻿-- Deprecated scratch file.
+-- Feedback tables, policies, and helper functions have been merged into:
+-- 1. supabase/schema.sql
+-- 2. supabase/migrations/20260404_feature_flags_auth_feedbacks.sql

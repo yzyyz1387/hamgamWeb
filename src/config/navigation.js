@@ -19,7 +19,7 @@ export const coreAdminMenuItems = [
   {
     id: 'admin-plugins',
     location: 'admin',
-    title: '插件系统',
+    title: '功能模块',
     to: '/admin/plugins',
     order: 20,
     meta: { requiresAuth: true, roles: ['SUPER_ADMIN'] },

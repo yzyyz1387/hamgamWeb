@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+﻿import { reactive } from 'vue'
 import { createPluginApi, PLUGIN_API_VERSION, PLUGIN_HOST_VERSION, isCompatibleVersionRange } from '@/plugins/api'
 import { canAccess } from '@/lib/access'
 import { resolveVisibleMenus } from '@/config/navigation'
@@ -6,22 +6,19 @@ import { createPluginEventBus } from '@/plugins/eventBus'
 import { requireSupabase, supabaseEnabled } from '@/lib/supabase'
 import { safeInsertAuditLog } from '@/lib/audit'
 import { buildPluginUpgradePolicy } from '@/plugins/upgradePolicy'
-import { getPluginCatalogEntries, getPluginCatalogManifestById, getPluginCatalogManifests, getPluginCatalogEntryById } from '@/plugins/registry'
+import { getPluginCatalogEntryById, getPluginCatalogManifests } from '@/plugins/registry'
 
 const LEGACY_DISABLED_PLUGIN_STORAGE_KEY = 'hamgam:plugins:disabled'
 const PLUGIN_SETTINGS_STORAGE_KEY = 'hamgam:plugins:settings'
-const PLUGIN_CONFIG_KEY = 'config'
+const FEATURE_FLAGS_SETTING_KEY = 'feature_flags'
 const PLUGIN_API_HOST_VERSION = PLUGIN_HOST_VERSION
+
 const pluginServices = reactive({})
-const BASIC_PLUGIN_COLUMNS = 'id, name, version, description, enabled, default_enabled, updated_at'
-const REGISTRY_PLUGIN_COLUMNS = `${BASIC_PLUGIN_COLUMNS}, installed, registration_status, install_source, registered_at, uninstalled_at`
-const LIFECYCLE_PLUGIN_COLUMNS = `${REGISTRY_PLUGIN_COLUMNS}, installed_version, api_version, host_version_range, status, installed_at, enabled_at, disabled_at, last_error`
-let remoteRegistryColumnsSupported = true
-let remoteLifecycleColumnsSupported = true
-
-const pluginCatalogEntries = getPluginCatalogEntries()
-
 const pluginEventBus = createPluginEventBus()
+const registeredPluginRouteNames = new Set()
+const initializedPluginIds = new Set()
+const initializedPluginHookIds = new Set()
+
 const runtimeState = reactive({
   loaded: false,
   loading: false,
@@ -33,11 +30,22 @@ const runtimeState = reactive({
   settingsById: {},
 })
 
-const registeredPluginRouteNames = new Set()
-const initializedPluginIds = new Set()
-const initializedPluginHookIds = new Set()
 let runtimeContext = null
 let loadSettingsPromise = null
+
+function isMissingSystemSettingsError(error) {
+  const message = String(error?.message || '')
+  const code = String(error?.code || '')
+  return code === 'PGRST205' ||
+    /Could not find the table 'public\.system_settings' in the schema cache/i.test(message) ||
+    /relation ["']?public\.system_settings["']? does not exist/i.test(message)
+}
+
+function createFeatureFlagsSetupError() {
+  const error = new Error('数据库尚未创建功能开关表，当前已回退到本地配置。请先执行 20260404_feature_flags_auth_feedbacks.sql，再刷新页面。')
+  error.code = 'FEATURE_FLAGS_SETUP_REQUIRED'
+  return error
+}
 
 function getPluginId(pluginOrId) {
   if (typeof pluginOrId === 'string') return pluginOrId
@@ -45,49 +53,12 @@ function getPluginId(pluginOrId) {
 }
 
 function getPluginById(pluginId) {
-  return getPluginCatalogManifestById(pluginId)
+  return getPluginCatalogManifests().find((plugin) => plugin.id === pluginId) || null
 }
 
 function getPluginCatalogEntry(pluginId) {
   return getPluginCatalogEntryById(pluginId)
 }
-
-function getPluginCompatibility(pluginOrId) {
-  const plugin = typeof pluginOrId === 'string' ? getPluginById(pluginOrId) : pluginOrId
-  if (!plugin) {
-    return {
-      compatible: false,
-      hostVersion: PLUGIN_API_HOST_VERSION,
-      requiredRange: '*',
-      reason: '未找到插件定义。',
-    }
-  }
-
-  const requiredRange = plugin.hostVersionRange || PLUGIN_API_HOST_VERSION
-  const compatible = isCompatibleVersionRange(requiredRange, PLUGIN_API_HOST_VERSION)
-
-  const upgradePolicy = buildPluginUpgradePolicy(plugin)
-
-  return {
-    compatible,
-    hostVersion: PLUGIN_API_HOST_VERSION,
-    requiredRange,
-    pluginApiVersion: plugin.apiVersion || PLUGIN_API_VERSION,
-    reason: compatible ? '' : `宿主版本 ${PLUGIN_API_HOST_VERSION} 不满足 ${requiredRange}`,
-    schemaVersion: upgradePolicy.schemaVersion,
-    migrationStrategy: upgradePolicy.migrationStrategy,
-    migrationStrategyLabel: upgradePolicy.migrationStrategyLabel,
-    migrationIds: upgradePolicy.migrationIds,
-    migrationNotes: upgradePolicy.migrationNotes,
-    migrationScript: upgradePolicy.migrationScript,
-    commandHint: upgradePolicy.commandHint,
-  }
-}
-
-function getPluginLifecycle(pluginId) {
-  return runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId] || null
-}
-
 
 function buildDefaultPluginConfig(plugin) {
   const defaults = plugin?.defaultConfig
@@ -109,31 +80,67 @@ function normalizePluginConfig(pluginId, value) {
   }
 }
 
+function getPluginCompatibility(pluginOrId) {
+  const plugin = typeof pluginOrId === 'string' ? getPluginById(pluginOrId) : pluginOrId
+  if (!plugin) {
+    return {
+      compatible: false,
+      hostVersion: PLUGIN_API_HOST_VERSION,
+      requiredRange: '*',
+      reason: '未找到功能模块定义。',
+    }
+  }
+
+  const requiredRange = plugin.hostVersionRange || PLUGIN_API_HOST_VERSION
+  const compatible = isCompatibleVersionRange(requiredRange, PLUGIN_API_HOST_VERSION)
+  const upgradePolicy = buildPluginUpgradePolicy(plugin)
+
+  return {
+    compatible,
+    hostVersion: PLUGIN_API_HOST_VERSION,
+    requiredRange,
+    pluginApiVersion: plugin.apiVersion || PLUGIN_API_VERSION,
+    reason: compatible ? '' : `宿主版本 ${PLUGIN_API_HOST_VERSION} 不满足 ${requiredRange}`,
+    schemaVersion: upgradePolicy.schemaVersion,
+    migrationStrategy: upgradePolicy.migrationStrategy,
+    migrationStrategyLabel: upgradePolicy.migrationStrategyLabel,
+    migrationIds: upgradePolicy.migrationIds,
+    migrationNotes: upgradePolicy.migrationNotes,
+    migrationScript: upgradePolicy.migrationScript,
+    commandHint: upgradePolicy.commandHint,
+  }
+}
+
+function buildManifestSetting(plugin) {
+  const enabled = plugin.enabled !== false
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    version: plugin.version || '0.0.0',
+    description: plugin.description || '',
+    installed: true,
+    registrationStatus: 'builtin',
+    installSource: getPluginCatalogEntry(plugin.id)?.source || 'builtin',
+    registeredAt: null,
+    uninstalledAt: null,
+    enabled,
+    defaultEnabled: enabled,
+    config: buildDefaultPluginConfig(plugin),
+    updatedAt: null,
+    installedVersion: plugin.version || '0.0.0',
+    apiVersion: plugin.apiVersion || PLUGIN_API_VERSION,
+    hostVersionRange: plugin.hostVersionRange || PLUGIN_API_HOST_VERSION,
+    lifecycleStatus: enabled ? 'enabled' : 'disabled',
+    installedAt: null,
+    enabledAt: null,
+    disabledAt: null,
+    lastError: null,
+  }
+}
+
 function getManifestDefaults() {
   return getPluginCatalogManifests().reduce((acc, plugin) => {
-    acc[plugin.id] = {
-      id: plugin.id,
-      name: plugin.name,
-      version: plugin.version || '0.0.0',
-      description: plugin.description || '',
-      installed: true,
-      registrationStatus: 'installed',
-      installSource: getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-      registeredAt: null,
-      uninstalledAt: null,
-      enabled: plugin.enabled !== false,
-      defaultEnabled: plugin.enabled !== false,
-      config: buildDefaultPluginConfig(plugin),
-      updatedAt: null,
-      installedVersion: null,
-      apiVersion: plugin.apiVersion || PLUGIN_API_VERSION,
-      hostVersionRange: plugin.hostVersionRange || PLUGIN_API_HOST_VERSION,
-      lifecycleStatus: plugin.enabled !== false ? 'enabled' : 'disabled',
-      installedAt: null,
-      enabledAt: plugin.enabled !== false ? new Date().toISOString() : null,
-      disabledAt: plugin.enabled === false ? new Date().toISOString() : null,
-      lastError: null,
-    }
+    acc[plugin.id] = buildManifestSetting(plugin)
     return acc
   }, {})
 }
@@ -155,8 +162,11 @@ function buildLocalFallbackSettings() {
   const legacyDisabledIds = readLegacyDisabledPluginIds()
 
   Object.keys(defaults).forEach((pluginId) => {
-    if (legacyDisabledIds.has(pluginId)) {
-      defaults[pluginId].enabled = false
+    if (!legacyDisabledIds.has(pluginId)) return
+    defaults[pluginId] = {
+      ...defaults[pluginId],
+      enabled: false,
+      lifecycleStatus: 'disabled',
     }
   })
 
@@ -173,12 +183,18 @@ function readPersistedPluginSettings() {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return defaults
 
     Object.entries(parsed).forEach(([pluginId, value]) => {
-      if (!defaults[pluginId] || !value || typeof value !== 'object') return
+      if (!defaults[pluginId] || !value || typeof value !== 'object' || Array.isArray(value)) return
+      const enabled = typeof value.enabled === 'boolean' ? value.enabled : defaults[pluginId].enabled
       defaults[pluginId] = {
         ...defaults[pluginId],
         ...value,
-        enabled: typeof value.enabled === 'boolean' ? value.enabled : defaults[pluginId].enabled,
+        installed: true,
+        registrationStatus: 'builtin',
+        installSource: 'builtin',
+        enabled,
         config: normalizePluginConfig(pluginId, value.config),
+        lifecycleStatus: value.lifecycleStatus || (enabled ? 'enabled' : 'disabled'),
+        installedVersion: value.installedVersion || defaults[pluginId].installedVersion,
       }
     })
 
@@ -197,38 +213,22 @@ function persistPluginSettings(settingsById) {
   }
 }
 
-function mergeRemoteSettings(rows = [], configRows = []) {
-  const defaults = getManifestDefaults()
+function mergeRemoteSettings(remoteSettings = {}) {
+  const defaults = readPersistedPluginSettings()
 
-  rows.forEach((row) => {
-    if (!row?.id || !defaults[row.id]) return
-    defaults[row.id] = {
-      ...defaults[row.id],
-      ...row,
-      installed: typeof row.installed === 'boolean' ? row.installed : defaults[row.id].installed,
-      registrationStatus: row.registration_status || defaults[row.id].registrationStatus,
-      installSource: row.install_source || defaults[row.id].installSource,
-      registeredAt: row.registered_at || defaults[row.id].registeredAt,
-      uninstalledAt: row.uninstalled_at || defaults[row.id].uninstalledAt,
-      enabled: typeof row.enabled === 'boolean' ? row.enabled : defaults[row.id].enabled,
-      defaultEnabled: typeof row.default_enabled === 'boolean' ? row.default_enabled : defaults[row.id].defaultEnabled,
-      updatedAt: row.updated_at || defaults[row.id].updatedAt,
-      installedVersion: row.installed_version || defaults[row.id].installedVersion,
-      apiVersion: row.api_version || defaults[row.id].apiVersion,
-      hostVersionRange: row.host_version_range || defaults[row.id].hostVersionRange,
-      lifecycleStatus: row.status || defaults[row.id].lifecycleStatus,
-      installedAt: row.installed_at || defaults[row.id].installedAt,
-      enabledAt: row.enabled_at || defaults[row.id].enabledAt,
-      disabledAt: row.disabled_at || defaults[row.id].disabledAt,
-      lastError: row.last_error || defaults[row.id].lastError,
-    }
-  })
-
-  configRows.forEach((row) => {
-    if (!row?.plugin_id || !defaults[row.plugin_id]) return
-    defaults[row.plugin_id] = {
-      ...defaults[row.plugin_id],
-      config: normalizePluginConfig(row.plugin_id, row.value_json),
+  Object.entries(remoteSettings || {}).forEach(([pluginId, value]) => {
+    if (!defaults[pluginId] || !value || typeof value !== 'object' || Array.isArray(value)) return
+    const enabled = typeof value.enabled === 'boolean' ? value.enabled : defaults[pluginId].enabled
+    defaults[pluginId] = {
+      ...defaults[pluginId],
+      ...value,
+      installed: true,
+      registrationStatus: 'builtin',
+      installSource: 'builtin',
+      enabled,
+      config: normalizePluginConfig(pluginId, value.config),
+      lifecycleStatus: value.lifecycleStatus || (enabled ? 'enabled' : 'disabled'),
+      installedVersion: value.installedVersion || defaults[pluginId].installedVersion,
     }
   })
 
@@ -249,18 +249,6 @@ function setRuntimeSettings(settingsById, meta = {}) {
   persistPluginSettings(settingsById)
 }
 
-function normalizePluginRoute(route, plugin) {
-  return {
-    ...route,
-    meta: {
-      ...(route.meta || {}),
-      pluginId: plugin.id,
-      pluginName: plugin.name,
-    },
-  }
-}
-
-
 function getRuntimeMeta() {
   return {
     source: runtimeState.source,
@@ -276,16 +264,30 @@ function patchPluginSettings(pluginId, patch = {}) {
     [pluginId]: {
       ...current,
       ...patch,
+      installed: true,
+      registrationStatus: 'builtin',
+      installSource: 'builtin',
       config: normalizePluginConfig(pluginId, patch.config ?? current?.config),
+      updatedAt: patch.updatedAt || new Date().toISOString(),
     },
   }
   setRuntimeSettings(next, getRuntimeMeta())
   return next[pluginId]
 }
 
-function isInstalledSetting(setting) {
-  if (typeof setting?.installed === 'boolean') return setting.installed
-  return true
+function getPluginLifecycle(pluginId) {
+  return runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId] || null
+}
+
+function normalizePluginRoute(route, plugin) {
+  return {
+    ...route,
+    meta: {
+      ...(route.meta || {}),
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+    },
+  }
 }
 
 function getPluginServices() {
@@ -322,14 +324,13 @@ function createStablePluginApi(plugin, context = {}) {
   })
 }
 
-async function runLifecycleHook(plugin, phase, payload = {}) {
+async function runPluginPhase(plugin, phase, payload = {}) {
   const handler = plugin?.lifecycle?.[phase]
-  const now = new Date().toISOString()
-  const current = runtimeState.settingsById[plugin.id] || getManifestDefaults()[plugin.id]
-  const compatibility = getPluginCompatibility(plugin)
+  if (!plugin || typeof handler !== 'function') return runtimeState.settingsById[plugin.id] || null
 
+  const compatibility = getPluginCompatibility(plugin)
   if (phase === 'enable' && !compatibility.compatible) {
-    const message = compatibility.reason || '插件与当前宿主版本不兼容。'
+    const message = compatibility.reason || '功能模块与当前宿主版本不兼容。'
     patchPluginSettings(plugin.id, {
       lifecycleStatus: 'error',
       lastError: message,
@@ -337,97 +338,40 @@ async function runLifecycleHook(plugin, phase, payload = {}) {
     throw new Error(message)
   }
 
-  const patch = {
-    installed: current.installed,
-    registrationStatus: current.registrationStatus || 'installed',
-    installSource: current.installSource || getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-    registeredAt: current.registeredAt || null,
-    uninstalledAt: current.uninstalledAt || null,
-    installedVersion: plugin.version || current.installedVersion || '0.0.0',
+  const now = new Date().toISOString()
+  patchPluginSettings(plugin.id, {
+    installedVersion: plugin.version || '0.0.0',
     apiVersion: plugin.apiVersion || PLUGIN_API_VERSION,
     hostVersionRange: plugin.hostVersionRange || PLUGIN_API_HOST_VERSION,
     lastError: null,
-  }
-
-  if (phase === 'install') {
-    patch.installed = true
-    patch.registrationStatus = 'installed'
-    patch.registeredAt = current.registeredAt || now
-    patch.uninstalledAt = null
-    patch.lifecycleStatus = current.enabled ? 'enabled' : 'installed'
-    patch.installedAt = current.installedAt || now
-  }
-  if (phase === 'upgrade') {
-    patch.lifecycleStatus = current.enabled ? 'enabled' : 'installed'
-  }
-  if (phase === 'enable') {
-    patch.lifecycleStatus = 'enabled'
-    patch.enabledAt = now
-    patch.disabledAt = null
-  }
-  if (phase === 'disable') {
-    patch.lifecycleStatus = 'disabled'
-    patch.disabledAt = now
-  }
-  if (phase === 'uninstall') {
-    patch.installed = false
-    patch.registrationStatus = 'uninstalled'
-    patch.enabled = false
-    patch.lifecycleStatus = 'disabled'
-    patch.uninstalledAt = now
-    patch.disabledAt = now
-  }
-
-  patchPluginSettings(plugin.id, patch)
-
-  const lifecyclePayload = {
-    phase,
-    plugin,
-    pluginId: plugin.id,
-    pluginName: plugin.name,
-    currentVersion: plugin.version || '0.0.0',
-    previousVersion: payload.previousVersion || current.installedVersion || null,
-    config: getPluginConfig(plugin.id),
-    compatibility,
-    ...payload,
-  }
+    lifecycleStatus: phase === 'disable' ? 'disabled' : 'enabled',
+    enabledAt: phase === 'enable' ? now : payload.enabledAt ?? null,
+    disabledAt: phase === 'disable' ? now : payload.disabledAt ?? null,
+  })
 
   try {
     const api = createStablePluginApi(plugin, payload)
-    if (typeof handler === 'function') {
-      await handler({
-        ...lifecyclePayload,
-        api,
-      })
-    }
-
-    const lifecycleActionMap = {
-      install: 'plugin.installed',
-      upgrade: 'plugin.upgraded',
-      enable: 'plugin.enabled',
-      disable: 'plugin.disabled',
-      uninstall: 'plugin.uninstalled',
-    }
-    const lifecycleLevelMap = {
-      install: 'info',
-      upgrade: 'info',
-      enable: 'success',
-      disable: 'warn',
-      uninstall: 'warn',
-    }
+    await handler({
+      ...payload,
+      phase,
+      plugin,
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+      config: getPluginConfig(plugin.id),
+      compatibility,
+      api,
+    })
 
     await safeInsertAuditLog({
-      action: lifecycleActionMap[phase] || 'plugin.lifecycle',
-      entityType: 'plugin',
+      action: phase === 'disable' ? 'feature.disabled' : 'feature.enabled',
+      entityType: 'feature',
       entityId: plugin.id,
-      level: lifecycleLevelMap[phase] || 'info',
+      level: phase === 'disable' ? 'warn' : 'success',
       details: {
-        plugin_id: plugin.id,
-        plugin_name: plugin.name,
+        feature_id: plugin.id,
+        feature_name: plugin.name,
         phase,
         version: plugin.version || '0.0.0',
-        previous_version: payload.previousVersion || current.installedVersion || null,
-        compatible: compatibility.compatible,
       },
     })
 
@@ -438,69 +382,19 @@ async function runLifecycleHook(plugin, phase, payload = {}) {
       lastError: error?.message || String(error),
     })
     await safeInsertAuditLog({
-      action: 'plugin.lifecycle_failed',
-      entityType: 'plugin',
+      action: 'feature.lifecycle_failed',
+      entityType: 'feature',
       entityId: plugin.id,
       level: 'error',
       details: {
-        plugin_id: plugin.id,
-        plugin_name: plugin.name,
+        feature_id: plugin.id,
+        feature_name: plugin.name,
         phase,
         message: error?.message || String(error),
       },
     })
     throw error
   }
-}
-
-async function reconcilePluginLifecycle() {
-  for (const plugin of getInstalledPlugins()) {
-    const current = runtimeState.settingsById[plugin.id] || getManifestDefaults()[plugin.id]
-    const version = plugin.version || '0.0.0'
-
-    if (!current.installedVersion) {
-      await runLifecycleHook(plugin, 'install')
-    } else if (current.installedVersion !== version) {
-      await runLifecycleHook(plugin, 'upgrade', { previousVersion: current.installedVersion })
-    }
-
-    const refreshed = runtimeState.settingsById[plugin.id] || current
-    if (refreshed.enabled && refreshed.lifecycleStatus !== 'enabled') {
-      await runLifecycleHook(plugin, 'enable')
-    }
-    if (!refreshed.enabled && refreshed.lifecycleStatus === 'enabled') {
-      await runLifecycleHook(plugin, 'disable')
-    }
-  }
-}
-
-async function persistPluginRegistryRow(pluginId) {
-  if (!supabaseEnabled) return
-  const plugin = getPluginById(pluginId)
-  if (!plugin) return
-  const current = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
-  await upsertPluginRows([{
-    id: plugin.id,
-    name: plugin.name,
-    version: plugin.version || '0.0.0',
-    description: plugin.description || '',
-    installed: isInstalledSetting(current),
-    registration_status: current.registrationStatus || (isInstalledSetting(current) ? 'installed' : 'uninstalled'),
-    install_source: current.installSource || getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-    registered_at: current.registeredAt || null,
-    uninstalled_at: current.uninstalledAt || null,
-    enabled: current.enabled,
-    default_enabled: plugin.enabled !== false,
-    installed_version: current.installedVersion || plugin.version || '0.0.0',
-    api_version: plugin.apiVersion || PLUGIN_API_VERSION,
-    host_version_range: plugin.hostVersionRange || PLUGIN_API_HOST_VERSION,
-    status: current.lifecycleStatus || (current.enabled ? 'enabled' : 'disabled'),
-    installed_at: current.installedAt || null,
-    enabled_at: current.enabledAt || null,
-    disabled_at: current.disabledAt || null,
-    last_error: current.lastError || null,
-    updated_at: new Date().toISOString(),
-  }], 'id')
 }
 
 export function registerPluginService(name, service) {
@@ -553,7 +447,6 @@ export async function invokePluginBulkAction(action, context = {}) {
   return result
 }
 
-
 async function ensurePluginSetup(plugin) {
   if (!plugin || initializedPluginIds.has(plugin.id)) return
 
@@ -563,7 +456,7 @@ async function ensurePluginSetup(plugin) {
       const hookId = `${plugin.id}:${hook.id || hook.event}`
       if (initializedPluginHookIds.has(hookId)) continue
       pluginEventBus.on(hook.event, async (payload = {}) => {
-        if (!isPluginInstalled(plugin.id) || !isPluginEnabled(plugin.id)) return
+        if (!isPluginEnabled(plugin.id)) return
         try {
           const api = createStablePluginApi(plugin, payload)
           await hook.handler({
@@ -592,170 +485,64 @@ async function ensurePluginSetup(plugin) {
       api,
     })
   }
+
   initializedPluginIds.add(plugin.id)
 }
 
-async function fetchRemotePluginRows() {
-  const supabase = requireSupabase()
-  const selectRows = async (columns) => {
-    const { data, error } = await supabase
-      .from('plugins')
-      .select(columns)
-      .order('id', { ascending: true })
-
-    if (error) throw error
-    return data || []
-  }
-
-  if (remoteLifecycleColumnsSupported) {
-    try {
-      return await selectRows(LIFECYCLE_PLUGIN_COLUMNS)
-    } catch (error) {
-      const message = String(error?.message || '')
-      const missingLifecycleColumn = error?.code === 'PGRST204' || /installed_version|api_version|host_version_range|enabled_at|disabled_at|last_error|status/i.test(message)
-      if (!missingLifecycleColumn) throw error
-      remoteLifecycleColumnsSupported = false
-      console.warn('[plugins] plugins 表未包含生命周期扩展列，已回退到注册中心兼容模式。', error)
-    }
-  }
-
-  if (remoteRegistryColumnsSupported) {
-    try {
-      return await selectRows(REGISTRY_PLUGIN_COLUMNS)
-    } catch (error) {
-      const message = String(error?.message || '')
-      const missingRegistryColumn = error?.code === 'PGRST204' || /installed|registration_status|install_source|registered_at|uninstalled_at/i.test(message)
-      if (!missingRegistryColumn) throw error
-      remoteRegistryColumnsSupported = false
-      console.warn('[plugins] plugins 表未包含注册中心扩展列，已回退到基础兼容模式。', error)
-    }
-  }
-
-  return selectRows(BASIC_PLUGIN_COLUMNS)
-}
-
-async function fetchRemotePluginConfigRows() {
+async function fetchRemoteFeatureSettings() {
   const supabase = requireSupabase()
   const { data, error } = await supabase
-    .from('plugin_settings')
-    .select('plugin_id, key, value_json, updated_at')
-    .eq('key', PLUGIN_CONFIG_KEY)
-    .order('plugin_id', { ascending: true })
+    .from('system_settings')
+    .select('value_json, updated_at')
+    .eq('key', FEATURE_FLAGS_SETTING_KEY)
+    .maybeSingle()
 
-  if (error) throw error
-  return data || []
+  if (error && error.code !== 'PGRST116') {
+    if (isMissingSystemSettingsError(error)) {
+      throw createFeatureFlagsSetupError()
+    }
+    throw error
+  }
+  return {
+    settings: data?.value_json && typeof data.value_json === 'object' && !Array.isArray(data.value_json)
+      ? data.value_json
+      : {},
+    updatedAt: data?.updated_at || null,
+  }
 }
 
-function buildPluginSyncPayload() {
-  return getPluginCatalogManifests().map((plugin) => {
-    const current = runtimeState.settingsById[plugin.id] || {}
-    const basePayload = {
-      id: plugin.id,
-      name: plugin.name,
-      version: plugin.version || '0.0.0',
-      description: plugin.description || '',
-      installed: typeof current.installed === 'boolean' ? current.installed : true,
-      registration_status: current.registrationStatus || 'installed',
-      install_source: current.installSource || getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-      registered_at: current.registeredAt || null,
-      uninstalled_at: current.uninstalledAt || null,
-      enabled: typeof current.enabled === 'boolean' ? current.enabled : plugin.enabled !== false,
-      default_enabled: plugin.enabled !== false,
-      updated_at: new Date().toISOString(),
+function buildRemoteFeaturePayload(settingsById = runtimeState.settingsById) {
+  return getPluginCatalogManifests().reduce((acc, plugin) => {
+    const current = settingsById[plugin.id] || getManifestDefaults()[plugin.id]
+    acc[plugin.id] = {
+      enabled: typeof current?.enabled === 'boolean' ? current.enabled : plugin.enabled !== false,
+      config: normalizePluginConfig(plugin.id, current?.config),
+      updatedAt: current?.updatedAt || null,
     }
-
-    if (!remoteRegistryColumnsSupported && !remoteLifecycleColumnsSupported) {
-      return {
-        id: basePayload.id,
-        name: basePayload.name,
-        version: basePayload.version,
-        description: basePayload.description,
-        enabled: basePayload.enabled,
-        default_enabled: basePayload.default_enabled,
-        updated_at: basePayload.updated_at,
-      }
-    }
-
-    if (!remoteLifecycleColumnsSupported) {
-      return basePayload
-    }
-
-    return {
-      ...basePayload,
-      installed_version: current.installedVersion || plugin.version || '0.0.0',
-      api_version: plugin.apiVersion || PLUGIN_API_VERSION,
-      host_version_range: plugin.hostVersionRange || PLUGIN_API_HOST_VERSION,
-      status: current.lifecycleStatus || (current.enabled ? 'enabled' : 'disabled'),
-      installed_at: current.installedAt || null,
-      enabled_at: current.enabledAt || null,
-      disabled_at: current.disabledAt || null,
-      last_error: current.lastError || null,
-    }
-  })
+    return acc
+  }, {})
 }
 
-async function upsertPluginRows(payload, onConflict = 'id') {
+async function persistFeatureSettingsRemote(settingsById = runtimeState.settingsById) {
   const supabase = requireSupabase()
-  if (remoteLifecycleColumnsSupported) {
-    const { error } = await supabase.from('plugins').upsert(payload, { onConflict })
-    if (!error) return
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('system_settings').upsert([
+    {
+      key: FEATURE_FLAGS_SETTING_KEY,
+      value_json: buildRemoteFeaturePayload(settingsById),
+      updated_at: now,
+    },
+  ], { onConflict: 'key' })
 
-    const message = String(error?.message || '')
-    const missingLifecycleColumn = error?.code === 'PGRST204' || /installed_version|api_version|host_version_range|enabled_at|disabled_at|last_error|status/i.test(message)
-    if (!missingLifecycleColumn) throw error
-
-    remoteLifecycleColumnsSupported = false
-    console.warn('[plugins] plugins 表缺少生命周期扩展列，已回退到注册中心写入模式。', error)
+  if (error) {
+    if (isMissingSystemSettingsError(error)) {
+      throw createFeatureFlagsSetupError()
+    }
+    throw error
   }
-
-  if (remoteRegistryColumnsSupported) {
-    const registryPayload = payload.map(({ id, name, version, description, installed, registration_status, install_source, registered_at, uninstalled_at, enabled, default_enabled, updated_at }) => ({
-      id,
-      name,
-      version,
-      description,
-      installed,
-      registration_status,
-      install_source,
-      registered_at,
-      uninstalled_at,
-      enabled,
-      default_enabled,
-      updated_at,
-    }))
-    const { error } = await supabase.from('plugins').upsert(registryPayload, { onConflict })
-    if (!error) return
-
-    const message = String(error?.message || '')
-    const missingRegistryColumn = error?.code === 'PGRST204' || /installed|registration_status|install_source|registered_at|uninstalled_at/i.test(message)
-    if (!missingRegistryColumn) throw error
-
-    remoteRegistryColumnsSupported = false
-    console.warn('[plugins] plugins 表缺少注册中心扩展列，已回退到基础兼容写入模式。', error)
-  }
-
-  const fallbackPayload = payload.map(({ id, name, version, description, enabled, default_enabled, updated_at }) => ({
-    id,
-    name,
-    version,
-    description,
-    enabled,
-    default_enabled,
-    updated_at,
-  }))
-  const { error } = await supabase.from('plugins').upsert(fallbackPayload, { onConflict })
-  if (error) throw error
-}
-
-function buildPluginConfigSyncPayload(pluginId = null) {
-  return getPluginCatalogManifests()
-    .filter((plugin) => !pluginId || plugin.id === pluginId)
-    .map((plugin) => ({
-      plugin_id: plugin.id,
-      key: PLUGIN_CONFIG_KEY,
-      value_json: normalizePluginConfig(plugin.id, runtimeState.settingsById[plugin.id]?.config),
-      updated_at: new Date().toISOString(),
-    }))
+  runtimeState.source = 'supabase'
+  runtimeState.remoteCount = Object.keys(settingsById || {}).length
+  runtimeState.lastSyncedAt = now
 }
 
 export function getPluginRuntimeState() {
@@ -767,7 +554,7 @@ export function getAvailablePlugins() {
 }
 
 export function getInstalledPlugins() {
-  return getPluginCatalogManifests().filter((plugin) => isPluginInstalled(plugin.id))
+  return getAvailablePlugins()
 }
 
 export function getPluginSettings(pluginId) {
@@ -788,16 +575,12 @@ export function getPluginSettingValue(pluginOrId, key, fallback = null) {
 }
 
 export function isPluginInstalled(pluginOrId) {
-  const pluginId = getPluginId(pluginOrId)
-  if (!pluginId) return false
-  const setting = runtimeState.settingsById[pluginId]
-  if (typeof setting?.installed === 'boolean') return setting.installed
-  return Boolean(getPluginById(pluginId))
+  return Boolean(getPluginById(getPluginId(pluginOrId)))
 }
 
 export function isPluginEnabled(pluginOrId) {
   const pluginId = getPluginId(pluginOrId)
-  if (!pluginId || !isPluginInstalled(pluginId)) return false
+  if (!pluginId) return false
   const setting = runtimeState.settingsById[pluginId]
   if (typeof setting?.enabled === 'boolean') return setting.enabled
   const plugin = getPluginById(pluginId)
@@ -805,7 +588,64 @@ export function isPluginEnabled(pluginOrId) {
 }
 
 export function getEnabledPlugins() {
-  return getInstalledPlugins().filter((plugin) => isPluginEnabled(plugin.id))
+  return getAvailablePlugins().filter((plugin) => isPluginEnabled(plugin.id))
+}
+
+function buildPluginExtensionContext(plugin, context = {}) {
+  return {
+    ...context,
+    plugin,
+    config: getPluginConfig(plugin.id),
+    pluginEventBus,
+    emit: pluginEventBus.emit,
+    on: pluginEventBus.on,
+    off: pluginEventBus.off,
+  }
+}
+
+function collectPluginExtensions(key, context = {}, options = {}) {
+  const {
+    target = '',
+    requiresComponent = false,
+    filterItem = () => true,
+    buildId = (plugin, item) => `${plugin.id}:${item.id || key}`,
+    transform = (plugin, item, pluginContext) => ({
+      ...item,
+      id: item.id || buildId(plugin, item),
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+      config: getPluginConfig(plugin.id),
+      badge: typeof item.badge === 'function' ? item.badge(pluginContext) : item.badge,
+    }),
+  } = options
+
+  return getEnabledPlugins()
+    .flatMap((plugin) => {
+      const pluginContext = buildPluginExtensionContext(plugin, context)
+      return (plugin[key] || [])
+        .filter((item) => !target || item.target === target)
+        .filter((item) => !requiresComponent || item.component)
+        .filter((item) => canAccess(item.meta || {}, context.auth))
+        .filter((item) => {
+          if (typeof item.when !== 'function') return true
+          try {
+            return item.when(pluginContext) !== false
+          } catch (error) {
+            console.error(`[plugins] Failed to evaluate ${key} item for ${plugin.id}`, error)
+            return false
+          }
+        })
+        .filter((item) => {
+          try {
+            return filterItem(item, pluginContext)
+          } catch (error) {
+            console.error(`[plugins] Failed to filter ${key} item for ${plugin.id}`, error)
+            return false
+          }
+        })
+        .map((item) => transform(plugin, item, pluginContext))
+    })
+    .sort((a, b) => (a.order || 0) - (b.order || 0))
 }
 
 export function getPluginRoutes() {
@@ -825,410 +665,116 @@ export function getPluginMenus(location, context = {}) {
           pluginName: plugin.name,
         })),
     )
-    .filter((menu) => canAccess(menu.meta, context.auth))
+    .filter((menu) => canAccess(menu.meta || {}, context.auth))
 
   return resolveVisibleMenus(menus, context)
 }
 
-
-function buildPluginExtensionContext(plugin, context = {}) {
-  return {
-    ...context,
-    plugin,
-    config: getPluginConfig(plugin.id),
-    pluginEventBus,
-    emit: pluginEventBus.emit,
-    on: pluginEventBus.on,
-    off: pluginEventBus.off,
-  }
-}
-
-
-
 export function getTopbarActions(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.topbarActions || [])
-        .filter((action) => canAccess(action.meta || {}, context.auth))
-        .filter((action) => {
-          if (typeof action.when !== 'function') return true
-          try {
-            return action.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate topbar action for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((action) => ({
-          ...action,
-          id: action.id || `${plugin.id}:topbar-action`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('topbarActions', context, {
+    buildId: (plugin) => `${plugin.id}:topbar-action`,
+  })
 }
 
 export function getNotificationTemplates(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.notificationTemplates || [])
-        .filter((template) => canAccess(template.meta || {}, context.auth))
-        .filter((template) => {
-          if (typeof template.when !== 'function') return true
-          try {
-            return template.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate notification template for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((template) => ({
-          ...template,
-          id: template.id || `${plugin.id}:notification-template`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('notificationTemplates', context, {
+    buildId: (plugin) => `${plugin.id}:notification-template`,
+  })
 }
 
 export function getNotificationCenterPanels(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.notificationCenterPanels || [])
-        .filter((panel) => panel.component)
-        .filter((panel) => canAccess(panel.meta || {}, context.auth))
-        .filter((panel) => {
-          if (typeof panel.when !== 'function') return true
-          try {
-            return panel.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate notification center panel for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((panel) => ({
-          ...panel,
-          id: panel.id || `${plugin.id}:notification-center-panel`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('notificationCenterPanels', context, {
+    requiresComponent: true,
+    buildId: (plugin) => `${plugin.id}:notification-center-panel`,
+  })
 }
 
 export function getAuditLogPanels(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.auditLogPanels || [])
-        .filter((panel) => panel.component)
-        .filter((panel) => canAccess(panel.meta || {}, context.auth))
-        .filter((panel) => {
-          if (typeof panel.when !== 'function') return true
-          try {
-            return panel.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate audit log panel for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((panel) => ({
-          ...panel,
-          id: panel.id || `${plugin.id}:audit-log-panel`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('auditLogPanels', context, {
+    requiresComponent: true,
+    buildId: (plugin) => `${plugin.id}:audit-log-panel`,
+  })
 }
 
 export function getAdminDashboardWidgets(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.dashboardWidgets || [])
-        .filter((widget) => widget.component)
-        .filter((widget) => canAccess(widget.meta || {}, context.auth))
-        .filter((widget) => {
-          if (typeof widget.when !== 'function') return true
-          try {
-            return widget.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate dashboard widget for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((widget) => ({
-          ...widget,
-          id: widget.id || `${plugin.id}:dashboard-widget`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('dashboardWidgets', context, {
+    requiresComponent: true,
+    buildId: (plugin) => `${plugin.id}:dashboard-widget`,
+  })
 }
-
 
 export function getProfilePanels(context = {}) {
   const target = context.target || 'self'
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.profilePanels || [])
-        .filter((panel) => panel.component)
-        .filter((panel) => {
-          const panelTarget = panel.target || 'self'
-          return panelTarget === 'both' || panelTarget === target
-        })
-        .filter((panel) => canAccess(panel.meta || {}, context.auth))
-        .filter((panel) => {
-          if (typeof panel.when !== 'function') return true
-          try {
-            return panel.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate profile panel for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((panel) => ({
-          ...panel,
-          id: panel.id || `${plugin.id}:profile-panel`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('profilePanels', context, {
+    requiresComponent: true,
+    filterItem: (panel) => {
+      const panelTarget = panel.target || 'self'
+      return panelTarget === 'both' || panelTarget === target
+    },
+    buildId: (plugin, panel) => `${plugin.id}:${panel.title || 'profile-panel'}`,
+  })
 }
 
 export function getImageListCardExtras(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.imageListCardExtras || [])
-        .filter((extra) => extra.component)
-        .filter((extra) => canAccess(extra.meta || {}, context.auth))
-        .filter((extra) => {
-          if (typeof extra.when !== 'function') return true
-          try {
-            return extra.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate image list card extra for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((extra) => ({
-          ...extra,
-          id: extra.id || `${plugin.id}:image-list-card-extra`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('imageListCardExtras', context, {
+    requiresComponent: true,
+    buildId: (plugin) => `${plugin.id}:image-list-card-extra`,
+  })
 }
 
 export function getUserListItemExtras(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.userListItemExtras || [])
-        .filter((extra) => extra.component)
-        .filter((extra) => canAccess(extra.meta || {}, context.auth))
-        .filter((extra) => {
-          if (typeof extra.when !== 'function') return true
-          try {
-            return extra.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate user list item extra for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((extra) => ({
-          ...extra,
-          id: extra.id || `${plugin.id}:user-list-item-extra`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('userListItemExtras', context, {
+    requiresComponent: true,
+    buildId: (plugin) => `${plugin.id}:user-list-item-extra`,
+  })
 }
 
 export function getAdminListFields(context = {}) {
-  const target = context.target || ''
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.adminListFields || [])
-        .filter((field) => !target || field.target === target)
-        .filter((field) => field.component)
-        .filter((field) => canAccess(field.meta || {}, context.auth))
-        .filter((field) => {
-          if (typeof field.when !== 'function') return true
-          try {
-            return field.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate admin list field for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((field) => ({
-          ...field,
-          id: field.id || `${plugin.id}:${field.title || 'admin-list-field'}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('adminListFields', context, {
+    target: context.target || '',
+    requiresComponent: true,
+    buildId: (plugin, field) => `${plugin.id}:${field.title || 'admin-list-field'}`,
+  })
 }
 
 export function getSubmissionReviewSidebarPanels(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.submissionReviewSidebarPanels || [])
-        .filter((panel) => panel.component)
-        .filter((panel) => canAccess(panel.meta || {}, context.auth))
-        .filter((panel) => {
-          if (typeof panel.when !== 'function') return true
-          try {
-            return panel.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate submission review sidebar panel for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((panel) => ({
-          ...panel,
-          id: panel.id || `${plugin.id}:${panel.title || 'submission-review-panel'}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('submissionReviewSidebarPanels', context, {
+    requiresComponent: true,
+    buildId: (plugin, panel) => `${plugin.id}:${panel.title || 'submission-review-panel'}`,
+  })
 }
 
 export function getAdminTableRowActions(context = {}) {
-  const target = context.target || ''
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.adminTableRowActions || [])
-        .filter((action) => !target || action.target === target)
-        .filter((action) => canAccess(action.meta || {}, context.auth))
-        .filter((action) => {
-          if (typeof action.when !== 'function') return true
-          try {
-            return action.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate admin row action for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((action) => ({
-          ...action,
-          id: action.id || `${plugin.id}:${action.label || 'admin-row-action'}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('adminTableRowActions', context, {
+    target: context.target || '',
+    buildId: (plugin, action) => `${plugin.id}:${action.label || 'admin-row-action'}`,
+  })
 }
 
 export function getAdminQuickActions(context = {}) {
-  const target = context.target || ''
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.adminQuickActions || [])
-        .filter((action) => !target || action.target === target)
-        .filter((action) => canAccess(action.meta || {}, context.auth))
-        .filter((action) => {
-          if (typeof action.when !== 'function') return true
-          try {
-            return action.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate admin quick action for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((action) => ({
-          ...action,
-          id: action.id || `${plugin.id}:${action.label || 'admin-quick-action'}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-          badge: typeof action.badge === 'function' ? action.badge(pluginContext) : action.badge,
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('adminQuickActions', context, {
+    target: context.target || '',
+    buildId: (plugin, action) => `${plugin.id}:${action.label || 'admin-quick-action'}`,
+  })
 }
 
 export function getReviewBulkActions(context = {}) {
-  const target = context.target || ''
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.reviewBulkActions || [])
-        .filter((action) => !target || action.target === target)
-        .filter((action) => canAccess(action.meta || {}, context.auth))
-        .filter((action) => {
-          if (typeof action.when !== 'function') return true
-          try {
-            return action.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate review bulk action for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((action) => ({
-          ...action,
-          id: action.id || `${plugin.id}:${action.label || 'review-bulk-action'}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-          config: getPluginConfig(plugin.id),
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('reviewBulkActions', context, {
+    target: context.target || '',
+    buildId: (plugin, action) => `${plugin.id}:${action.label || 'review-bulk-action'}`,
+  })
 }
 
 export function getImageDetailActions(context = {}) {
-  return getEnabledPlugins()
-    .flatMap((plugin) => {
-      const pluginContext = buildPluginExtensionContext(plugin, context)
-      return (plugin.imageDetailActions || [])
-        .filter((action) => canAccess(action.meta || {}, context.auth))
-        .filter((action) => {
-          if (typeof action.when !== 'function') return true
-          try {
-            return action.when(pluginContext) !== false
-          } catch (error) {
-            console.error(`[plugins] Failed to evaluate image detail action for ${plugin.id}`, error)
-            return false
-          }
-        })
-        .map((action) => ({
-          ...action,
-          id: action.id || `${plugin.id}:${action.label}`,
-          pluginId: plugin.id,
-          pluginName: plugin.name,
-        }))
-    })
-    .sort((a, b) => (a.order || 0) - (b.order || 0))
+  return collectPluginExtensions('imageDetailActions', context, {
+    buildId: (plugin, action) => `${plugin.id}:${action.label || 'image-detail-action'}`,
+    transform: (plugin, action) => ({
+      ...action,
+      id: action.id || `${plugin.id}:${action.label || 'image-detail-action'}`,
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+    }),
+  })
 }
 
 export async function emitPluginEvent(event, payload = {}) {
@@ -1282,20 +828,17 @@ export async function loadPluginSettings() {
       return runtimeState.settingsById
     }
 
-    runtimeState.loading = true
-
     try {
-      const [rows, configRows] = await Promise.all([
-        fetchRemotePluginRows(),
-        fetchRemotePluginConfigRows(),
-      ])
-      const remoteSettings = mergeRemoteSettings(rows, configRows)
-      setRuntimeSettings(remoteSettings, {
+      const { settings: remoteSettings, updatedAt } = await fetchRemoteFeatureSettings()
+      const mergedSettings = mergeRemoteSettings(remoteSettings)
+      setRuntimeSettings(mergedSettings, {
         source: 'supabase',
-        remoteCount: rows.length,
+        remoteCount: Object.keys(remoteSettings || {}).length,
+        lastSyncedAt: updatedAt,
       })
     } catch (error) {
-      runtimeState.error = error?.message || '插件配置读取失败，已回退到本地配置。'
+      runtimeState.error = error?.message || '功能开关读取失败，已回退到本地配置。'
+      runtimeState.source = 'local'
       runtimeState.loading = false
     }
 
@@ -1312,7 +855,6 @@ export async function loadPluginSettings() {
 
 export async function reloadPluginRuntime({ router } = {}) {
   await loadPluginSettings()
-  await reconcilePluginLifecycle()
   if (router || runtimeContext?.router) {
     syncPluginRoutes(router || runtimeContext.router)
   }
@@ -1324,21 +866,9 @@ export async function reloadPluginRuntime({ router } = {}) {
 
 export async function syncInstalledPluginsToRemote() {
   if (!supabaseEnabled) {
-    throw new Error('Supabase 未配置，当前只能使用本地插件配置。')
+    throw new Error('Supabase 未配置，当前只能使用本地功能开关配置。')
   }
-  await reconcilePluginLifecycle()
-  const supabase = requireSupabase()
-  const pluginPayload = buildPluginSyncPayload()
-  const configPayload = buildPluginConfigSyncPayload()
-
-  await upsertPluginRows(pluginPayload, 'id')
-
-  if (configPayload.length) {
-    const { error: configError } = await supabase.from('plugin_settings').upsert(configPayload, { onConflict: 'plugin_id,key' })
-    if (configError) throw configError
-  }
-
-  runtimeState.lastSyncedAt = new Date().toISOString()
+  await persistFeatureSettingsRemote()
   return reloadPluginRuntime({ router: runtimeContext?.router })
 }
 
@@ -1361,118 +891,37 @@ export function getPluginUpgradePolicy(pluginId) {
 }
 
 export async function installPlugin(pluginId, options = {}) {
-  const plugin = getPluginById(pluginId)
-  if (!plugin) throw new Error(`未找到插件：${pluginId}`)
-
-  const current = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
-  const targetRouter = options.router || runtimeContext?.router
-  const shouldEnable = options.enable ?? (current.enabled ?? plugin.enabled !== false)
-
-  patchPluginSettings(pluginId, {
-    installed: true,
-    registrationStatus: 'installed',
-    installSource: current.installSource || getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-    registeredAt: current.registeredAt || new Date().toISOString(),
-    uninstalledAt: null,
-    enabled: shouldEnable,
-  })
-
-  await runLifecycleHook(plugin, 'install', { previousVersion: current.installedVersion || null })
-  if (shouldEnable) {
-    await runLifecycleHook(plugin, 'enable')
-    await ensurePluginSetup(plugin)
-  }
-
-  if (targetRouter) syncPluginRoutes(targetRouter)
-  if (options.persistRemote !== false && supabaseEnabled) {
-    await persistPluginRegistryRow(pluginId)
-    runtimeState.source = 'supabase'
-    runtimeState.lastSyncedAt = new Date().toISOString()
-  }
-
-  return runtimeState.settingsById[pluginId]
+  return setPluginEnabled(pluginId, options.enable ?? true, options)
 }
 
 export async function uninstallPlugin(pluginId, options = {}) {
-  const plugin = getPluginById(pluginId)
-  if (!plugin) throw new Error(`未找到插件：${pluginId}`)
-  if (!isPluginInstalled(pluginId)) return runtimeState.settingsById[pluginId] || null
-
-  const current = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
-  const targetRouter = options.router || runtimeContext?.router
-
-  if (current.enabled) {
-    await runLifecycleHook(plugin, 'disable')
+  const state = await setPluginEnabled(pluginId, false, options)
+  if (options.clearConfig) {
+    await savePluginConfig(pluginId, buildDefaultPluginConfig(getPluginById(pluginId)), options)
   }
-  await runLifecycleHook(plugin, 'uninstall')
-
-  patchPluginSettings(pluginId, {
-    installed: false,
-    enabled: false,
-    registrationStatus: 'uninstalled',
-    installSource: current.installSource || getPluginCatalogEntry(plugin.id)?.source || 'builtin',
-    registeredAt: current.registeredAt || null,
-    uninstalledAt: new Date().toISOString(),
-    config: options.clearConfig ? buildDefaultPluginConfig(plugin) : current.config,
-  })
-
-  initializedPluginIds.delete(pluginId)
-
-  if (targetRouter) syncPluginRoutes(targetRouter)
-  if (options.persistRemote !== false && supabaseEnabled) {
-    await persistPluginRegistryRow(pluginId)
-    if (options.clearConfig) {
-      await savePluginConfig(pluginId, buildDefaultPluginConfig(plugin), { persistRemote: true })
-    }
-    runtimeState.source = 'supabase'
-    runtimeState.lastSyncedAt = new Date().toISOString()
-  }
-
-  return runtimeState.settingsById[pluginId]
+  return state
 }
 
 export async function reinstallPlugin(pluginId, options = {}) {
   const plugin = getPluginById(pluginId)
   if (!plugin) {
-    throw new Error(`未找到插件：${pluginId}`)
-  }
-  if (!isPluginInstalled(pluginId)) {
-    throw new Error('插件尚未安装，无法切换启停状态。')
+    throw new Error(`未找到功能模块：${pluginId}`)
   }
 
-  const currentSettings = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
-  const targetRouter = options.router || runtimeContext?.router
-
-  await runLifecycleHook(plugin, 'install', {
-    previousVersion: currentSettings.installedVersion || null,
-    reinstall: true,
-  })
-
-  if (currentSettings.enabled) {
-    await runLifecycleHook(plugin, 'enable', {
-      reinstall: true,
-      previousVersion: currentSettings.installedVersion || null,
-    })
-    await ensurePluginSetup(plugin)
+  const wasEnabled = isPluginEnabled(pluginId)
+  initializedPluginIds.delete(pluginId)
+  await savePluginConfig(pluginId, buildDefaultPluginConfig(plugin), options)
+  if (wasEnabled) {
+    await setPluginEnabled(pluginId, false, { ...options, persistRemote: false })
+    await setPluginEnabled(pluginId, true, options)
   }
-
-  if (targetRouter) {
-    syncPluginRoutes(targetRouter)
-  }
-
-  if (options.persistRemote !== false && supabaseEnabled) {
-    await persistPluginRegistryRow(pluginId)
-    runtimeState.source = 'supabase'
-    runtimeState.lastSyncedAt = new Date().toISOString()
-  }
-
   return runtimeState.settingsById[pluginId]
 }
 
 export async function setPluginEnabled(pluginId, enabled, options = {}) {
   const plugin = getPluginById(pluginId)
   if (!plugin) {
-    throw new Error(`未找到插件：${pluginId}`)
+    throw new Error(`未找到功能模块：${pluginId}`)
   }
 
   const currentSettings = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
@@ -1481,34 +930,32 @@ export async function setPluginEnabled(pluginId, enabled, options = {}) {
 
   patchPluginSettings(pluginId, {
     enabled,
+    lifecycleStatus: enabled ? 'enabled' : 'disabled',
     config: normalizePluginConfig(pluginId, currentSettings.config),
   })
 
   const targetRouter = options.router || runtimeContext?.router
-  if (enabled && !previousEnabled) {
-    await runLifecycleHook(plugin, 'enable')
-  }
-  if (!enabled && previousEnabled) {
-    await runLifecycleHook(plugin, 'disable')
-    initializedPluginIds.delete(pluginId)
-  }
-
-  if (targetRouter) {
-    syncPluginRoutes(targetRouter)
-  }
-
-  if (enabled) {
-    await ensurePluginSetup(plugin)
-  }
-
-  if (options.persistRemote === false || !supabaseEnabled) {
-    return runtimeState.settingsById[pluginId]
-  }
-
   try {
-    await persistPluginRegistryRow(pluginId)
-    runtimeState.source = 'supabase'
-    runtimeState.lastSyncedAt = new Date().toISOString()
+    if (enabled && !previousEnabled) {
+      await runPluginPhase(plugin, 'enable', { ...options })
+    }
+    if (!enabled && previousEnabled) {
+      await runPluginPhase(plugin, 'disable', { ...options })
+      initializedPluginIds.delete(pluginId)
+    }
+
+    if (targetRouter) {
+      syncPluginRoutes(targetRouter)
+    }
+
+    if (enabled) {
+      await ensurePluginSetup(plugin)
+    }
+
+    if (options.persistRemote !== false && supabaseEnabled) {
+      await persistFeatureSettingsRemote()
+    }
+
     return runtimeState.settingsById[pluginId]
   } catch (error) {
     runtimeState.settingsById = previousSettings
@@ -1523,7 +970,7 @@ export async function setPluginEnabled(pluginId, enabled, options = {}) {
 export async function savePluginConfig(pluginId, config, options = {}) {
   const plugin = getPluginById(pluginId)
   if (!plugin) {
-    throw new Error(`未找到插件：${pluginId}`)
+    throw new Error(`未找到功能模块：${pluginId}`)
   }
 
   const currentSettings = runtimeState.settingsById[pluginId] || getManifestDefaults()[pluginId]
@@ -1538,30 +985,14 @@ export async function savePluginConfig(pluginId, config, options = {}) {
     },
   }
 
-  setRuntimeSettings(nextSettings, {
-    source: runtimeState.source,
-    remoteCount: runtimeState.remoteCount,
-  })
+  setRuntimeSettings(nextSettings, getRuntimeMeta())
 
   if (options.persistRemote === false || !supabaseEnabled) {
     return runtimeState.settingsById[pluginId]
   }
 
   try {
-    const supabase = requireSupabase()
-    const { error } = await supabase.from('plugin_settings').upsert([
-      {
-        plugin_id: plugin.id,
-        key: PLUGIN_CONFIG_KEY,
-        value_json: normalizedConfig,
-        updated_at: new Date().toISOString(),
-      },
-    ], { onConflict: 'plugin_id,key' })
-
-    if (error) throw error
-
-    runtimeState.source = 'supabase'
-    runtimeState.lastSyncedAt = new Date().toISOString()
+    await persistFeatureSettingsRemote(nextSettings)
     return runtimeState.settingsById[pluginId]
   } catch (error) {
     runtimeState.settingsById = previousSettings
@@ -1584,7 +1015,6 @@ export async function initializePluginRuntime(context = {}) {
   }
 
   await loadPluginSettings()
-  await reconcilePluginLifecycle()
   if (runtimeContext.router) {
     syncPluginRoutes(runtimeContext.router)
   }
@@ -1593,3 +1023,4 @@ export async function initializePluginRuntime(context = {}) {
     await ensurePluginSetup(plugin)
   }
 }
+

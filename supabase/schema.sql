@@ -1,14 +1,14 @@
--- HamGam / Supabase 全量初始化脚本（按当前项目数据库快照重写）
+-- HamGam / Supabase 鍏ㄩ噺鍒濆鍖栬剼鏈紙鎸夊綋鍓嶉」鐩暟鎹簱蹇収閲嶅啓锛?
 --
--- 用途：
--- 1) 新环境快速初始化数据库结构、RLS、函数、存储桶与插件运行时表
--- 2) 尽量对齐当前项目实际使用的字段与 RPC
+-- 鐢ㄩ€旓細
+-- 1) 鏂扮幆澧冨揩閫熷垵濮嬪寲鏁版嵁搴撶粨鏋勩€丷LS銆佸嚱鏁般€佸瓨鍌ㄦ《涓庢彃浠惰繍琛屾椂琛?
+-- 2) 灏介噺瀵归綈褰撳墠椤圭洰瀹為檯浣跨敤鐨勫瓧娈典笌 RPC
 --
--- 说明：
--- - 本文件已合并旧 schema + 当前项目在用结构 + 插件系统基础表
--- - 出于稳健性考虑，未收录当前库里的临时表 test_table
--- - 执行完本文件后，再部署 Edge Functions
--- - 首个超级管理员请手动提升
+-- 璇存槑锛?
+-- - 鏈枃浠跺凡鍚堝苟鏃?schema + 褰撳墠椤圭洰鍦ㄧ敤缁撴瀯 + 鎻掍欢绯荤粺鍩虹琛?
+-- - 鍑轰簬绋冲仴鎬ц€冭檻锛屾湭鏀跺綍褰撳墠搴撻噷鐨勪复鏃惰〃 test_table
+-- - 鎵ц瀹屾湰鏂囦欢鍚庯紝鍐嶉儴缃?Edge Functions
+-- - 棣栦釜瓒呯骇绠＄悊鍛樿鎵嬪姩鎻愬崌
 
 create extension if not exists pgcrypto;
 create extension if not exists unaccent with schema extensions;
@@ -77,21 +77,9 @@ create table if not exists public.profiles (
   certifications jsonb not null default '[]'::jsonb,
   grid_locator text,
   uid integer not null default nextval('public.profiles_uid_seq'::regclass),
-  active_auth_session_id uuid,
-  active_auth_session_seen_at timestamptz,
   show_in_team_page boolean not null default false,
   constraint profiles_nickname_length check (char_length(nickname) between 1 and 40),
   constraint profiles_uid_unique unique (uid)
-);
-
-create table if not exists public.sessions (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  session_id text not null unique,
-  device_info text,
-  created_at timestamptz not null default timezone('utc', now()),
-  last_activity_at timestamptz not null default timezone('utc', now()),
-  is_active boolean not null default true
 );
 
 create table if not exists public.images (
@@ -123,6 +111,7 @@ create table if not exists public.images (
   edit_reason text,
   edit_requested_by uuid,
   phash text,
+  phash_bits bit(64),
   file_md5 varchar(64),
   constraint images_title_length check (char_length(title) between 1 and 120),
   constraint images_edit_status_check check (
@@ -152,6 +141,7 @@ create table if not exists public.submissions (
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now()),
   phash text,
+  phash_bits bit(64),
   file_md5 varchar(64),
   constraint submissions_title_length check (char_length(title) between 1 and 120),
   constraint submissions_storage_requirement check (
@@ -270,37 +260,51 @@ create table if not exists public.callsign_applications (
   constraint callsign_applications_status_check check (status in ('PENDING', 'APPROVED', 'REJECTED'))
 );
 
-create table if not exists public.plugins (
-  id text primary key,
-  name text not null,
-  version text not null default '0.0.0',
+create table if not exists public.system_settings (
+  key text primary key,
+  value_json jsonb not null default '{}'::jsonb,
   description text not null default '',
-  installed boolean not null default true,
-  registration_status text not null default 'installed' check (registration_status in ('installed', 'uninstalled')),
-  install_source text not null default 'builtin',
-  registered_at timestamptz,
-  uninstalled_at timestamptz,
-  enabled boolean not null default true,
-  default_enabled boolean not null default true,
-  installed_version text,
-  api_version text not null default '1.1.0',
-  host_version_range text not null default '^1.1.0',
-  status text not null default 'enabled' check (status in ('installed', 'enabled', 'disabled', 'error')),
-  installed_at timestamptz,
-  enabled_at timestamptz,
-  disabled_at timestamptz,
-  last_error text,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  updated_by uuid references public.profiles(id) on delete set null
+);
+
+create table if not exists public.image_feedbacks (
+  id uuid primary key default gen_random_uuid(),
+  image_id uuid not null references public.images(id) on delete cascade,
+  reporter_id uuid not null references public.profiles(id) on delete cascade,
+  feedback_type text not null check (feedback_type in ('violation', 'copyright', 'quality', 'other')),
+  content text not null,
+  contact_email text,
+  status text not null default 'PENDING' check (status in ('PENDING', 'DISMISS', 'RESOLVED', 'DISCUSS', 'MORE_INFO')),
+  reviewer_id uuid references public.profiles(id) on delete set null,
+  review_note text,
+  reviewed_at timestamptz,
+  metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
 
-create table if not exists public.plugin_settings (
-  plugin_id text not null references public.plugins(id) on delete cascade,
-  key text not null,
-  value_json jsonb not null default '{}'::jsonb,
+create table if not exists public.feedback_replies (
+  id uuid primary key default gen_random_uuid(),
+  feedback_id uuid not null references public.image_feedbacks(id) on delete cascade,
+  author_id uuid not null references public.profiles(id) on delete cascade,
+  content text not null,
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.site_feedbacks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  feedback_type text not null check (feedback_type in ('bug', 'feature', 'improvement', 'other')),
+  content text not null,
+  contact_email text,
+  status text not null default 'PENDING' check (status in ('PENDING', 'READ', 'RESOLVED', 'DISMISSED')),
+  admin_note text,
+  handled_by uuid references public.profiles(id) on delete set null,
+  handled_at timestamptz,
   created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  primary key (plugin_id, key)
+  updated_at timestamptz not null default timezone('utc', now())
 );
 
 -- =======
@@ -313,13 +317,11 @@ create unique index if not exists idx_profiles_callsign_unique
   on public.profiles(lower(callsign))
   where callsign is not null and btrim(callsign) <> '';
 
-create index if not exists idx_sessions_user_id on public.sessions(user_id, is_active);
-create index if not exists idx_sessions_session_id on public.sessions(session_id);
-
 create index if not exists idx_images_status_published_at on public.images(status, published_at desc);
 create index if not exists idx_images_sort_time on public.images((coalesce(legacy_updated_at, published_at)) desc);
 create index if not exists idx_images_uploader_id on public.images(uploader_id);
 create index if not exists idx_images_phash on public.images(phash);
+create index if not exists idx_images_phash_bits on public.images(phash_bits);
 create index if not exists idx_images_file_md5 on public.images(file_md5);
 
 create index if not exists idx_submissions_status_created_at on public.submissions(status, created_at desc);
@@ -328,6 +330,7 @@ create index if not exists idx_submissions_reviewer_id on public.submissions(rev
 create index if not exists idx_submissions_assigned_reviewer_id on public.submissions(assigned_reviewer_id);
 create index if not exists idx_submissions_published_image_id on public.submissions(published_image_id);
 create index if not exists idx_submissions_phash on public.submissions(phash);
+create index if not exists idx_submissions_phash_bits on public.submissions(phash_bits);
 create index if not exists idx_submissions_file_md5 on public.submissions(file_md5);
 
 create index if not exists idx_submission_reviews_submission_id on public.submission_reviews(submission_id, created_at desc);
@@ -343,8 +346,16 @@ create index if not exists idx_audit_logs_level_created on public.audit_logs(lev
 create index if not exists idx_friend_links_active_sort on public.friend_links(is_active, sort_order asc, created_at desc);
 create index if not exists idx_callsign_apps_user_created on public.callsign_applications(user_id, created_at desc);
 create index if not exists idx_callsign_apps_status_created on public.callsign_applications(status, created_at desc);
-create index if not exists idx_plugins_enabled on public.plugins(enabled);
-create index if not exists idx_plugin_settings_plugin_id on public.plugin_settings(plugin_id);
+create index if not exists idx_image_feedbacks_image on public.image_feedbacks(image_id);
+create index if not exists idx_image_feedbacks_reporter on public.image_feedbacks(reporter_id);
+create index if not exists idx_image_feedbacks_status on public.image_feedbacks(status);
+create index if not exists idx_image_feedbacks_created on public.image_feedbacks(created_at desc);
+create index if not exists idx_image_feedbacks_reviewer on public.image_feedbacks(reviewer_id);
+create index if not exists idx_feedback_replies_feedback on public.feedback_replies(feedback_id);
+create index if not exists idx_feedback_replies_author on public.feedback_replies(author_id);
+create index if not exists idx_site_feedbacks_user on public.site_feedbacks(user_id);
+create index if not exists idx_site_feedbacks_status on public.site_feedbacks(status);
+create index if not exists idx_site_feedbacks_created on public.site_feedbacks(created_at desc);
 
 -- =================
 -- Grants / Defaults
@@ -366,7 +377,11 @@ stable
 security definer
 set search_path = public
 as $$
-  select coalesce((select role from public.profiles where id = auth.uid()), 'USER'::public.user_role);
+  select coalesce(
+    nullif(auth.jwt() ->> 'user_role', '')::public.user_role,
+    (select role from public.profiles where id = auth.uid()),
+    'USER'::public.user_role
+  );
 $$;
 
 create or replace function public.is_super_admin()
@@ -376,13 +391,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.profiles
-    where id = auth.uid()
-      and role = 'SUPER_ADMIN'
-      and is_active = true
-  );
+  select public.current_profile_role() = 'SUPER_ADMIN' and public.is_current_user_active();
 $$;
 
 create or replace function public.can_moderate()
@@ -392,13 +401,7 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.profiles
-    where id = auth.uid()
-      and role in ('SUPER_ADMIN', 'REVIEWER')
-      and is_active = true
-  );
+  select public.current_profile_role() in ('SUPER_ADMIN', 'REVIEWER') and public.is_current_user_active();
 $$;
 
 create or replace function public.is_current_user_active()
@@ -408,11 +411,10 @@ stable
 security definer
 set search_path = public
 as $$
-  select exists (
-    select 1
-    from public.profiles
-    where id = auth.uid()
-      and is_active = true
+  select coalesce(
+    (auth.jwt() ->> 'is_active')::boolean,
+    (select is_active from public.profiles where id = auth.uid()),
+    true
   );
 $$;
 
@@ -550,143 +552,69 @@ as $$
   where label is not null and btrim(label) <> '';
 $$;
 
--- =================
--- Session Functions
--- =================
-create or replace function public.claim_active_session(p_session_id text, p_device_info text default null)
-returns boolean
+create or replace function public.hex_to_bit64(p_phash_hex text)
+returns bit(64)
+language sql
+immutable
+set search_path = public
+as $$
+  select case
+    when p_phash_hex ~ '^[0-9A-Fa-f]{16}$' then ('x' || lower(p_phash_hex))::bit(64)
+    else null::bit(64)
+  end;
+$$;
+
+create or replace function public.sync_phash_bits_trigger()
+returns trigger
 language plpgsql
-security definer
 set search_path = public
 as $$
 begin
-  update public.sessions
-  set is_active = false
-  where user_id = auth.uid()
-    and is_active = true;
-
-  insert into public.sessions(user_id, session_id, device_info, last_activity_at, is_active)
-  values (auth.uid(), p_session_id, p_device_info, timezone('utc', now()), true)
-  on conflict (session_id) do update
-  set is_active = true,
-      last_activity_at = timezone('utc', now()),
-      device_info = coalesce(excluded.device_info, public.sessions.device_info);
-
-  return true;
+  new.phash_bits := public.hex_to_bit64(new.phash);
+  return new;
 end;
 $$;
 
-create or replace function public.release_active_session(p_session_id text)
-returns boolean
+-- ============================
+-- Auth Claims / Profile Sync
+-- ============================
+create or replace function public.custom_access_token_hook(event jsonb)
+returns jsonb
 language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  update public.sessions
-  set is_active = false,
-      last_activity_at = timezone('utc', now())
-  where user_id = auth.uid()
-    and session_id = p_session_id
-    and is_active = true;
-
-  return true;
-end;
-$$;
-
-create or replace function public.is_active_session_valid(p_session_id text)
-returns boolean
-language plpgsql
+stable
 security definer
 set search_path = public
 as $$
 declare
-  v_valid boolean;
+  v_claims jsonb;
+  v_role public.user_role := 'USER'::public.user_role;
+  v_is_active boolean := true;
+  v_nickname text := '';
 begin
-  update public.sessions
-  set last_activity_at = timezone('utc', now())
-  where user_id = auth.uid()
-    and session_id = p_session_id
-    and is_active = true;
-
-  select exists(
-    select 1
-    from public.sessions
-    where user_id = auth.uid()
-      and session_id = p_session_id
-      and is_active = true
-  ) into v_valid;
-
-  return coalesce(v_valid, false);
-end;
-$$;
-
-create or replace function public.claim_active_session(p_session_id uuid)
-returns table(
-  user_id uuid,
-  is_active boolean,
-  active_auth_session_id uuid,
-  active_auth_session_seen_at timestamptz
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  update public.profiles
-  set active_auth_session_id = p_session_id,
-      active_auth_session_seen_at = timezone('utc', now()),
-      updated_at = timezone('utc', now())
-  where id = auth.uid()
-  returning profiles.id, profiles.is_active, profiles.active_auth_session_id, profiles.active_auth_session_seen_at
-  into user_id, is_active, active_auth_session_id, active_auth_session_seen_at;
-
-  return next;
-end;
-$$;
-
-create or replace function public.release_active_session(p_session_id uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  update public.profiles
-  set active_auth_session_id = null,
-      active_auth_session_seen_at = timezone('utc', now()),
-      updated_at = timezone('utc', now())
-  where id = auth.uid()
-    and active_auth_session_id = p_session_id;
-
-  return true;
-end;
-$$;
-
-create or replace function public.validate_active_session(p_session_id uuid)
-returns table(
-  is_valid boolean,
-  is_active boolean,
-  active_auth_session_id uuid,
-  active_auth_session_seen_at timestamptz,
-  role public.user_role
-)
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  return query
   select
-    (p.active_auth_session_id = p_session_id and p.is_active = true) as is_valid,
-    p.is_active,
-    p.active_auth_session_id,
-    p.active_auth_session_seen_at,
-    p.role
-  from public.profiles p
-  where p.id = auth.uid();
+    coalesce(role, 'USER'::public.user_role),
+    coalesce(is_active, true),
+    coalesce(nickname, '')
+  into
+    v_role,
+    v_is_active,
+    v_nickname
+  from public.profiles
+  where id = (event ->> 'user_id')::uuid;
+
+  v_claims := coalesce(event -> 'claims', '{}'::jsonb);
+  v_claims := jsonb_set(v_claims, '{user_role}', to_jsonb(v_role::text), true);
+  v_claims := jsonb_set(v_claims, '{is_active}', to_jsonb(v_is_active), true);
+  v_claims := jsonb_set(v_claims, '{nickname}', to_jsonb(v_nickname), true);
+
+  event := jsonb_set(event, '{claims}', v_claims, true);
+  return event;
 end;
 $$;
+
+grant usage on schema public to supabase_auth_admin;
+grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
+revoke execute on function public.custom_access_token_hook(jsonb) from anon, authenticated, public;
 
 -- ====================
 -- Auth / Profile Sync
@@ -703,7 +631,7 @@ begin
   v_nickname := coalesce(
     nullif(new.raw_user_meta_data ->> 'nickname', ''),
     split_part(new.email, '@', 1),
-    '用户'
+    '鐢ㄦ埛'
   );
 
   insert into public.profiles (id, email, nickname)
@@ -750,8 +678,6 @@ begin
     new.is_active := old.is_active;
     new.email := old.email;
     new.uid := old.uid;
-    new.active_auth_session_id := old.active_auth_session_id;
-    new.active_auth_session_seen_at := old.active_auth_session_seen_at;
     new.show_in_team_page := old.show_in_team_page;
   end if;
 
@@ -927,11 +853,11 @@ begin
 
   if new.uploader_id is not null and (new.uploader_display_name is null or btrim(new.uploader_display_name) = '') then
     select nickname into v_nickname from public.profiles where id = new.uploader_id;
-    new.uploader_display_name := coalesce(v_nickname, new.contributor_name, '匿名投稿者');
+    new.uploader_display_name := coalesce(v_nickname, new.contributor_name, '鍖垮悕鎶曠鑰?);
   end if;
 
   if new.contributor_name is null or btrim(new.contributor_name) = '' then
-    new.contributor_name := coalesce(new.uploader_display_name, '佚名');
+    new.contributor_name := coalesce(new.uploader_display_name, '浣氬悕');
   end if;
 
   new.updated_at := timezone('utc', now());
@@ -949,7 +875,7 @@ declare
 begin
   if new.uploader_display_name is null or btrim(new.uploader_display_name) = '' then
     select nickname into v_nickname from public.profiles where id = new.uploader_id;
-    new.uploader_display_name := coalesce(v_nickname, '匿名用户');
+    new.uploader_display_name := coalesce(v_nickname, '鍖垮悕鐢ㄦ埛');
   end if;
 
   if new.contributor_name is null or btrim(new.contributor_name) = '' then
@@ -971,7 +897,7 @@ declare
 begin
   if tg_op = 'INSERT' then
     select * into v_profile from public.profiles where id = new.user_id;
-    new.author_display_name := coalesce(v_profile.nickname, '匿名用户');
+    new.author_display_name := coalesce(v_profile.nickname, '鍖垮悕鐢ㄦ埛');
     new.author_avatar_url := v_profile.avatar_url;
     new.author_certifications := public.extract_certification_labels(v_profile.certifications);
   end if;
@@ -1121,7 +1047,7 @@ begin
     new.uploader_display_name,
     uploader.avatar_url,
     'SUBMISSION_CREATED',
-    '有新的投稿待审核',
+    '鏈夋柊鐨勬姇绋垮緟瀹℃牳',
     new.title,
     '/admin/submissions',
     jsonb_build_object('submission_id', new.id)
@@ -1171,7 +1097,7 @@ begin
       new.author_display_name,
       new.author_avatar_url,
       'COMMENT_CREATED',
-      '你的图片收到了新评论',
+      '浣犵殑鍥剧墖鏀跺埌浜嗘柊璇勮',
       left(new.content, 120),
       '/image/' || v_image.slug,
       jsonb_build_object('image_id', v_image.id, 'comment_id', new.id)
@@ -1353,25 +1279,25 @@ begin
   returning * into updated_row;
 
   if previous_row.role is distinct from updated_row.role then
-    change_messages := array_append(change_messages, '角色已变更为 ' || updated_row.role::text);
+    change_messages := array_append(change_messages, '瑙掕壊宸插彉鏇翠负 ' || updated_row.role::text);
     notify_type := 'ROLE_CHANGED';
   end if;
 
   if previous_row.is_active is distinct from updated_row.is_active then
     change_messages := array_append(
       change_messages,
-      case when updated_row.is_active then '账号已恢复启用' else '账号已被停用' end
+      case when updated_row.is_active then '璐﹀彿宸叉仮澶嶅惎鐢? else '璐﹀彿宸茶鍋滅敤' end
     );
   end if;
 
   if previous_row.certifications is distinct from updated_row.certifications then
-    change_messages := array_append(change_messages, '认证信息已更新');
+    change_messages := array_append(change_messages, '璁よ瘉淇℃伅宸叉洿鏂?);
   end if;
 
   if previous_row.show_in_team_page is distinct from updated_row.show_in_team_page then
     change_messages := array_append(
       change_messages,
-      case when updated_row.show_in_team_page then '已加入团队页展示' else '已从团队页展示中移除' end
+      case when updated_row.show_in_team_page then '宸插姞鍏ュ洟闃熼〉灞曠ず' else '宸蹭粠鍥㈤槦椤靛睍绀轰腑绉婚櫎' end
     );
   end if;
 
@@ -1393,8 +1319,8 @@ begin
       requester.nickname,
       requester.avatar_url,
       notify_type,
-      case when notify_type = 'ROLE_CHANGED' then '账户权限已更新' else '账户信息已更新' end,
-      array_to_string(change_messages, '；'),
+      case when notify_type = 'ROLE_CHANGED' then '璐︽埛鏉冮檺宸叉洿鏂? else '璐︽埛淇℃伅宸叉洿鏂? end,
+      array_to_string(change_messages, '锛?),
       '/profile',
       jsonb_build_object('target_user_id', updated_row.id)
     );
@@ -1500,8 +1426,8 @@ begin
     v_reviewer.nickname,
     v_reviewer.avatar_url,
     'ACCOUNT_UPDATED',
-    case when v_status = 'APPROVED' then '你的呼号申请已通过' else '你的呼号申请未通过' end,
-    coalesce(nullif(p_reviewer_note, ''), case when v_status = 'APPROVED' then '呼号已更新到你的资料页。' else '请根据审核意见修改后重新提交。' end),
+    case when v_status = 'APPROVED' then '浣犵殑鍛煎彿鐢宠宸查€氳繃' else '浣犵殑鍛煎彿鐢宠鏈€氳繃' end,
+    coalesce(nullif(p_reviewer_note, ''), case when v_status = 'APPROVED' then '鍛煎彿宸叉洿鏂板埌浣犵殑璧勬枡椤点€? else '璇锋牴鎹鏍告剰瑙佷慨鏀瑰悗閲嶆柊鎻愪氦銆? end),
     '/profile',
     jsonb_build_object(
       'callsign_application_id', v_app.id,
@@ -1578,7 +1504,7 @@ begin
     v_reviewer.id,
     v_reviewer.nickname,
     'ASSIGNED',
-    '自动分配给当前审核员'
+    '鑷姩鍒嗛厤缁欏綋鍓嶅鏍稿憳'
   );
 end;
 $$;
@@ -1605,7 +1531,10 @@ as $$
 declare
   v_phash bit(64);
 begin
-  v_phash := ('x' || p_phash_hex)::bit(64);
+  v_phash := public.hex_to_bit64(p_phash_hex);
+  if v_phash is null then
+    return;
+  end if;
 
   return query
   select
@@ -1622,10 +1551,9 @@ begin
       i.slug,
       i.image_url,
       i.uploader_display_name,
-      bit_count(('x' || i.phash)::bit(64) # v_phash)::integer as dist
+      bit_count(i.phash_bits # v_phash)::integer as dist
     from public.images i
-    where i.phash is not null
-      and length(i.phash) = 16
+    where i.phash_bits is not null
   ) t
   where t.dist <= p_threshold
     and t.dist > 0
@@ -1652,7 +1580,10 @@ as $$
 declare
   v_phash bit(64);
 begin
-  v_phash := ('x' || p_phash_hex)::bit(64);
+  v_phash := public.hex_to_bit64(p_phash_hex);
+  if v_phash is null then
+    return;
+  end if;
 
   return query
   select
@@ -1667,10 +1598,9 @@ begin
       s.title,
       s.status::text,
       s.storage_path,
-      bit_count(('x' || s.phash)::bit(64) # v_phash)::integer as dist
+      bit_count(s.phash_bits # v_phash)::integer as dist
     from public.submissions s
-    where s.phash is not null
-      and length(s.phash) = 16
+    where s.phash_bits is not null
   ) t
   where t.dist <= p_threshold
     and t.dist > 0
@@ -1680,22 +1610,6 @@ end;
 $$;
 
 create or replace function public.find_duplicate_images_by_md5(p_md5 text)
-returns table (
-  id uuid,
-  title text,
-  slug text,
-  image_url text
-)
-language sql
-stable
-set search_path = public
-as $$
-  select i.id, i.title, i.slug, i.image_url
-  from public.images i
-  where i.file_md5 = p_md5;
-$$;
-
-create or replace function public.find_duplicate_images_by_md5(p_md5 varchar)
 returns table (
   id uuid,
   title text,
@@ -1745,6 +1659,148 @@ as $$
   where s.file_md5 = p_md5;
 $$;
 
+create or replace function public.update_feedback_status(
+  p_feedback_id uuid,
+  p_new_status text,
+  p_review_note text default null
+)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_current_status text;
+begin
+  select status
+  into v_current_status
+  from public.image_feedbacks
+  where id = p_feedback_id;
+
+  if not found then
+    return json_build_object('success', false, 'error', 'Feedback not found');
+  end if;
+
+  if p_new_status = 'DISMISS' and v_current_status not in ('PENDING', 'DISCUSS', 'MORE_INFO') then
+    return json_build_object('success', false, 'error', 'Invalid status transition');
+  end if;
+
+  update public.image_feedbacks
+  set status = p_new_status,
+      review_note = p_review_note,
+      reviewer_id = auth.uid(),
+      reviewed_at = timezone('utc', now()),
+      updated_at = timezone('utc', now())
+  where id = p_feedback_id;
+
+  return json_build_object('success', true, 'new_status', p_new_status);
+end;
+$$;
+
+create or replace function public.notify_admins_feedback(
+  p_image_title text default null,
+  p_feedback_url text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, type, title, content, link)
+  select
+    id,
+    'SYSTEM',
+    '鏂扮殑鍥剧墖鍙嶉宸叉彁浜?,
+    case
+      when p_image_title is not null then '鏈夌敤鎴锋彁浜や簡瀵广€? || p_image_title || '銆嬬殑鍥剧墖鍙嶉锛岃鍙婃椂澶勭悊銆?
+      else '鏈夌敤鎴锋彁浜や簡鏂扮殑鍥剧墖鍙嶉锛岃鍙婃椂澶勭悊銆?
+    end,
+    p_feedback_url
+  from public.profiles
+  where role in ('SUPER_ADMIN', 'REVIEWER')
+    and is_active = true;
+end;
+$$;
+
+create or replace function public.notify_user_feedback_updated(
+  p_user_id uuid,
+  p_new_status text,
+  p_image_title text default null,
+  p_review_note text default null,
+  p_feedback_url text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, type, title, content, link)
+  values (
+    p_user_id,
+    'SYSTEM',
+    '鍙嶉鐘舵€佸凡鏇存柊',
+    case
+      when p_image_title is not null then
+        '浣犳彁浜ょ殑鍏充簬銆? || p_image_title || '銆嬬殑鍙嶉鐘舵€佸凡鍙樻洿涓猴細' ||
+        case p_new_status
+          when 'PENDING' then '寰呭鏍?
+          when 'DISMISS' then '涓嶈鍏?
+          when 'RESOLVED' then '宸茶В鍐?
+          when 'DISCUSS' then '闇€璁ㄨ'
+          when 'MORE_INFO' then '闇€鏇村淇℃伅'
+          else p_new_status
+        end ||
+        case
+          when p_review_note is not null and btrim(p_review_note) <> '' then '銆傚娉細' || p_review_note
+          else ''
+        end
+      else
+        '浣犵殑鍙嶉鐘舵€佸凡鍙樻洿涓猴細' ||
+        case p_new_status
+          when 'PENDING' then '寰呭鏍?
+          when 'DISMISS' then '涓嶈鍏?
+          when 'RESOLVED' then '宸茶В鍐?
+          when 'DISCUSS' then '闇€璁ㄨ'
+          when 'MORE_INFO' then '闇€鏇村淇℃伅'
+          else p_new_status
+        end
+    end,
+    p_feedback_url
+  );
+end;
+$$;
+
+create or replace function public.notify_admins_site_feedback(
+  p_feedback_type text default null,
+  p_feedback_url text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, type, title, content, link)
+  select
+    id,
+    'SYSTEM',
+    '鏂扮殑缃戠珯鍙嶉宸叉彁浜?,
+    '鏈夌敤鎴锋彁浜や簡缃戠珯鍙嶉锛? ||
+    case p_feedback_type
+      when 'bug' then '闂鍙嶉'
+      when 'feature' then '鍔熻兘寤鸿'
+      when 'improvement' then '浣撻獙浼樺寲'
+      else '鍏朵粬'
+    end || '锛夛紝璇峰強鏃跺鐞嗐€?,
+    p_feedback_url
+  from public.profiles
+  where role = 'SUPER_ADMIN'
+    and is_active = true;
+end;
+$$;
+
 -- =================
 -- Auth Triggers
 -- =================
@@ -1762,7 +1818,7 @@ insert into public.profiles (id, email, nickname)
 select
   u.id,
   u.email,
-  left(coalesce(nullif(u.raw_user_meta_data ->> 'nickname', ''), split_part(u.email, '@', 1), '用户'), 40)
+  left(coalesce(nullif(u.raw_user_meta_data ->> 'nickname', ''), split_part(u.email, '@', 1), '鐢ㄦ埛'), 40)
 from auth.users u
 on conflict (id) do nothing;
 
@@ -1804,14 +1860,29 @@ create trigger trg_callsign_applications_touch
 before update on public.callsign_applications
 for each row execute procedure public.touch_updated_at();
 
-drop trigger if exists trg_plugins_touch on public.plugins;
-create trigger trg_plugins_touch
-before update on public.plugins
+drop trigger if exists trg_system_settings_touch on public.system_settings;
+create trigger trg_system_settings_touch
+before update on public.system_settings
 for each row execute procedure public.touch_updated_at();
 
-drop trigger if exists trg_plugin_settings_touch on public.plugin_settings;
-create trigger trg_plugin_settings_touch
-before update on public.plugin_settings
+drop trigger if exists trg_images_sync_phash_bits on public.images;
+create trigger trg_images_sync_phash_bits
+before insert or update of phash on public.images
+for each row execute procedure public.sync_phash_bits_trigger();
+
+drop trigger if exists trg_submissions_sync_phash_bits on public.submissions;
+create trigger trg_submissions_sync_phash_bits
+before insert or update of phash on public.submissions
+for each row execute procedure public.sync_phash_bits_trigger();
+
+drop trigger if exists trigger_image_feedbacks_updated on public.image_feedbacks;
+create trigger trigger_image_feedbacks_updated
+before update on public.image_feedbacks
+for each row execute procedure public.touch_updated_at();
+
+drop trigger if exists trigger_site_feedbacks_updated on public.site_feedbacks;
+create trigger trigger_site_feedbacks_updated
+before update on public.site_feedbacks
 for each row execute procedure public.touch_updated_at();
 
 drop trigger if exists trg_comments_refresh_count on public.comments;
@@ -1838,7 +1909,6 @@ for each row execute procedure public.notify_comment_created();
 -- RLS
 -- ===
 alter table public.profiles enable row level security;
-alter table public.sessions enable row level security;
 alter table public.images enable row level security;
 alter table public.submissions enable row level security;
 alter table public.submission_reviews enable row level security;
@@ -1849,8 +1919,10 @@ alter table public.announcements enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.friend_links enable row level security;
 alter table public.callsign_applications enable row level security;
-alter table public.plugins enable row level security;
-alter table public.plugin_settings enable row level security;
+alter table public.system_settings enable row level security;
+alter table public.image_feedbacks enable row level security;
+alter table public.feedback_replies enable row level security;
+alter table public.site_feedbacks enable row level security;
 
 -- profiles
  drop policy if exists profiles_select_self on public.profiles;
@@ -2139,36 +2211,6 @@ for all
 using (public.is_super_admin())
 with check (public.is_super_admin());
 
--- sessions
- drop policy if exists sessions_select_own on public.sessions;
-create policy sessions_select_own
-on public.sessions
-for select
-  to authenticated
-using (user_id = auth.uid());
-
- drop policy if exists sessions_insert_own on public.sessions;
-create policy sessions_insert_own
-on public.sessions
-for insert
-  to authenticated
-with check (user_id = auth.uid());
-
- drop policy if exists sessions_update_own on public.sessions;
-create policy sessions_update_own
-on public.sessions
-for update
-  to authenticated
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
-
- drop policy if exists sessions_delete_own on public.sessions;
-create policy sessions_delete_own
-on public.sessions
-for delete
-  to authenticated
-using (user_id = auth.uid());
-
 -- audit logs
  drop policy if exists audit_logs_select_admin on public.audit_logs;
 create policy audit_logs_select_admin
@@ -2216,33 +2258,118 @@ for all
 using (public.is_super_admin())
 with check (public.is_super_admin());
 
--- plugins
- drop policy if exists plugins_public_select on public.plugins;
-create policy plugins_public_select
-on public.plugins
+-- system settings
+ drop policy if exists system_settings_admin_select on public.system_settings;
+create policy system_settings_admin_select
+on public.system_settings
 for select
-  to public
-using (true);
+  to authenticated
+using (public.is_super_admin());
 
-drop policy if exists plugins_admin_manage on public.plugins;
-create policy plugins_admin_manage
-on public.plugins
+drop policy if exists system_settings_admin_manage on public.system_settings;
+create policy system_settings_admin_manage
+on public.system_settings
 for all
   to authenticated
 using (public.is_super_admin())
 with check (public.is_super_admin());
 
--- plugin settings
- drop policy if exists plugin_settings_admin_select on public.plugin_settings;
-create policy plugin_settings_admin_select
-on public.plugin_settings
+-- image feedbacks
+drop policy if exists image_feedbacks_select_own on public.image_feedbacks;
+create policy image_feedbacks_select_own
+on public.image_feedbacks
 for select
   to authenticated
-using (public.is_super_admin());
+using (auth.uid() = reporter_id);
 
-drop policy if exists plugin_settings_admin_manage on public.plugin_settings;
-create policy plugin_settings_admin_manage
-on public.plugin_settings
+drop policy if exists image_feedbacks_insert_own on public.image_feedbacks;
+create policy image_feedbacks_insert_own
+on public.image_feedbacks
+for insert
+  to authenticated
+with check (auth.uid() = reporter_id);
+
+drop policy if exists image_feedbacks_update_more_info on public.image_feedbacks;
+create policy image_feedbacks_update_more_info
+on public.image_feedbacks
+for update
+  to authenticated
+using (auth.uid() = reporter_id and status = 'MORE_INFO')
+with check (auth.uid() = reporter_id);
+
+drop policy if exists image_feedbacks_moderator_select on public.image_feedbacks;
+create policy image_feedbacks_moderator_select
+on public.image_feedbacks
+for select
+  to authenticated
+using (public.can_moderate());
+
+drop policy if exists image_feedbacks_moderator_manage on public.image_feedbacks;
+create policy image_feedbacks_moderator_manage
+on public.image_feedbacks
+for update
+  to authenticated
+using (public.can_moderate())
+with check (public.can_moderate());
+
+-- feedback replies
+drop policy if exists feedback_replies_select_participants on public.feedback_replies;
+create policy feedback_replies_select_participants
+on public.feedback_replies
+for select
+  to authenticated
+using (
+  exists (
+    select 1
+    from public.image_feedbacks f
+    where f.id = feedback_id
+      and (
+        f.reporter_id = auth.uid()
+        or f.reviewer_id = auth.uid()
+        or public.can_moderate()
+      )
+  )
+);
+
+drop policy if exists feedback_replies_insert_reporter on public.feedback_replies;
+create policy feedback_replies_insert_reporter
+on public.feedback_replies
+for insert
+  to authenticated
+with check (
+  exists (
+    select 1
+    from public.image_feedbacks f
+    where f.id = feedback_id
+      and f.reporter_id = auth.uid()
+  )
+);
+
+drop policy if exists feedback_replies_insert_moderator on public.feedback_replies;
+create policy feedback_replies_insert_moderator
+on public.feedback_replies
+for insert
+  to authenticated
+with check (public.can_moderate());
+
+-- site feedbacks
+drop policy if exists site_feedbacks_select_own on public.site_feedbacks;
+create policy site_feedbacks_select_own
+on public.site_feedbacks
+for select
+  to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists site_feedbacks_insert_own on public.site_feedbacks;
+create policy site_feedbacks_insert_own
+on public.site_feedbacks
+for insert
+  to authenticated
+with check (auth.uid() = user_id);
+
+drop policy if exists site_feedbacks_admin_manage on public.site_feedbacks;
+create policy site_feedbacks_admin_manage
+on public.site_feedbacks
 for all
   to authenticated
 using (public.is_super_admin())
@@ -2421,40 +2548,68 @@ using (
   )
 );
 
--- =====================
--- Seed Built-in Plugins
--- =====================
-insert into public.plugins (id, name, version, description, installed, registration_status, install_source, registered_at, uninstalled_at, enabled, default_enabled, installed_version, api_version, host_version_range, status)
-values
-  ('friend-links', '友情链接', '1.4.1', '为后台提供友情链接管理能力。', true, 'installed', 'builtin', null, null, true, true, '1.4.1', '1.1.0', '^1.1.0', 'enabled'),
-  ('callsign-review', '呼号系统', '1.9.1', '提供呼号申请页面和后台审核能力。', true, 'installed', 'builtin', null, null, true, true, '1.9.1', '1.1.0', '^1.1.0', 'enabled'),
-  ('hash-processor', '哈希处理器', '2.0.1', '为后台提供 pHash/MD5 工具页。', true, 'installed', 'builtin', null, null, true, true, '2.0.1', '1.1.0', '^1.1.0', 'enabled')
-on conflict (id) do update
-set name = excluded.name,
-    version = excluded.version,
-    description = excluded.description,
-    installed = excluded.installed,
-    registration_status = excluded.registration_status,
-    install_source = excluded.install_source,
-    registered_at = excluded.registered_at,
-    uninstalled_at = excluded.uninstalled_at,
-    enabled = excluded.enabled,
-    default_enabled = excluded.default_enabled,
-    installed_version = excluded.installed_version,
-    api_version = excluded.api_version,
-    host_version_range = excluded.host_version_range,
-    status = excluded.status,
-    updated_at = timezone('utc', now());
-
-insert into public.plugin_settings (plugin_id, key, value_json)
-values
-  ('friend-links', 'config', '{"enablePublicFooterLinks": true, "footerTitle": "友情链接", "maxVisibleLinks": 20, "openInNewTab": true, "showDashboardWidget": true, "showAdminQuickActions": true}'::jsonb),
-  ('callsign-review', 'config', '{"maxUploadSizeMB": 10, "autoUppercaseCallsign": true, "customNotice": "请上传业余无线电操作证书或执照扫描件（PDF / 图片），建议对证件号等敏感信息添加水印或打码处理后再上传。文件大小不超过 10MB。", "showDashboardWidget": true, "showSelfProfilePanel": true, "showPublicProfilePanel": true, "showUserListItemExtra": true, "showAdminUserActions": true, "showAdminListFields": true, "showTopbarAction": true, "showNotificationPanel": true, "showAdminQuickActions": true}'::jsonb),
-  ('hash-processor', 'config', '{"defaultTargetTable": "images", "defaultBatchSize": 10, "allowSubmissionsTable": true, "enableImageDetailActions": true, "showDashboardWidget": true, "showSelfProfilePanel": true, "showImageListCardExtra": true, "showSubmissionReviewPanel": true, "showTopbarAction": true, "showAuditLogPanel": true, "showReviewBulkActions": true, "showAdminQuickActions": true}'::jsonb)
-on conflict (plugin_id, key) do update
+-- =========================
+-- Seed Feature Flag Config
+-- =========================
+insert into public.system_settings (key, value_json, description)
+values (
+  'feature_flags',
+  '{
+    "friend-links": {
+      "enabled": true,
+      "config": {
+        "enablePublicFooterLinks": true,
+        "footerTitle": "\u53cb\u60c5\u94fe\u63a5",
+        "maxVisibleLinks": 20,
+        "openInNewTab": true,
+        "showDashboardWidget": true,
+        "showAdminQuickActions": true
+      },
+      "updatedAt": null
+    },
+    "callsign-review": {
+      "enabled": true,
+      "config": {
+        "maxUploadSizeMB": 10,
+        "autoUppercaseCallsign": true,
+        "customNotice": "\u8bf7\u4e0a\u4f20\u4e1a\u4f59\u65e0\u7ebf\u7535\u64cd\u4f5c\u8bc1\u4e66\u6216\u6267\u7167\u626b\u63cf\u4ef6\uff08PDF / \u56fe\u7247\uff09\uff0c\u5efa\u8bae\u5bf9\u8bc1\u4ef6\u53f7\u7b49\u654f\u611f\u4fe1\u606f\u6dfb\u52a0\u6c34\u5370\u6216\u6253\u7801\u5904\u7406\u540e\u518d\u4e0a\u4f20\u3002\u6587\u4ef6\u5927\u5c0f\u4e0d\u8d85\u8fc7 10MB\u3002",
+        "showDashboardWidget": true,
+        "showSelfProfilePanel": true,
+        "showPublicProfilePanel": true,
+        "showUserListItemExtra": true,
+        "showAdminUserActions": true,
+        "showAdminListFields": true,
+        "showTopbarAction": true,
+        "showNotificationPanel": true,
+        "showAdminQuickActions": true
+      },
+      "updatedAt": null
+    },
+    "hash-processor": {
+      "enabled": true,
+      "config": {
+        "defaultTargetTable": "images",
+        "defaultBatchSize": 10,
+        "allowSubmissionsTable": true,
+        "enableImageDetailActions": true,
+        "showDashboardWidget": true,
+        "showSelfProfilePanel": true,
+        "showImageListCardExtra": true,
+        "showSubmissionReviewPanel": true,
+        "showTopbarAction": true,
+        "showAuditLogPanel": true,
+        "showReviewBulkActions": true,
+        "showAdminQuickActions": true
+      },
+      "updatedAt": null
+    }
+  }'::jsonb,
+  'Builtin feature flags for internal modules'
+)
+on conflict (key) do update
 set value_json = excluded.value_json,
+    description = excluded.description,
     updated_at = timezone('utc', now());
-
 -- ======================
 -- Function Execute Grants
 -- ======================
@@ -2464,7 +2619,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 -- ==============
 -- Bootstrap Note
 -- ==============
--- 首个超级管理员请手动执行，例如：
+-- 棣栦釜瓒呯骇绠＄悊鍛樿鎵嬪姩鎵ц锛屼緥濡傦細
 -- update public.profiles
 -- set role = 'SUPER_ADMIN'
 -- where email = 'your-admin@example.com';
@@ -2474,14 +2629,8 @@ alter default privileges in schema public grant execute on functions to anon, au
 -- =========================
 do $$
 begin
-  alter publication supabase_realtime add table public.sessions;
-exception
-  when duplicate_object then null;
-end $$;
-
-do $$
-begin
   alter publication supabase_realtime add table public.notifications;
 exception
   when duplicate_object then null;
 end $$;
+

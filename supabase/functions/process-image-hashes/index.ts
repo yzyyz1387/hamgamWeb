@@ -57,6 +57,21 @@ function decodeJwtPayload(token: string) {
   }
 }
 
+function readStringClaim(payload: Record<string, unknown> | null, key: string) {
+  const value = payload?.[key]
+  return typeof value === 'string' ? value : null
+}
+
+function readBooleanClaim(payload: Record<string, unknown> | null, key: string) {
+  const value = payload?.[key]
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    if (value === 'true') return true
+    if (value === 'false') return false
+  }
+  return null
+}
+
 async function authenticateSuperAdmin(request: Request) {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -75,31 +90,49 @@ async function authenticateSuperAdmin(request: Request) {
     return { error: jsonResponse({ error: 'Missing access token' }, 401) }
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-
   const payload = decodeJwtPayload(token)
   const userId = typeof payload?.sub === 'string' ? payload.sub : null
+  const userRole = readStringClaim(payload, 'user_role')
+  const isActive = readBooleanClaim(payload, 'is_active')
   if (!userId) {
     return { error: jsonResponse({ error: 'Unauthorized', detail: 'Invalid JWT payload' }, 401) }
   }
 
-  const { data: profile, error: profileError } = await adminClient
-    .from('profiles')
-    .select('id, nickname, role, is_active')
-    .eq('id', userId)
-    .single()
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
 
-  if (profileError || !profile) {
-    return { error: jsonResponse({ error: 'Actor profile not found' }, 403) }
+  let resolvedRole = userRole
+  let resolvedActive = isActive
+  let resolvedNickname = readStringClaim(payload, 'nickname') || readStringClaim(payload, 'email') || 'SUPER_ADMIN'
+
+  if (!resolvedRole || resolvedActive === null) {
+    const { data: profile, error: profileError } = await adminClient
+      .from('profiles')
+      .select('nickname, role, is_active')
+      .eq('id', userId)
+      .maybeSingle()
+
+    if (profileError || !profile) {
+      return { error: jsonResponse({ error: 'Actor profile not found' }, 403) }
+    }
+
+    resolvedRole = resolvedRole || profile.role || null
+    resolvedActive = resolvedActive ?? profile.is_active ?? null
+    resolvedNickname = profile.nickname || resolvedNickname
   }
 
-  if (!profile.is_active || profile.role !== 'SUPER_ADMIN') {
+  if (resolvedRole !== 'SUPER_ADMIN' || resolvedActive === false) {
     return { error: jsonResponse({ error: 'Forbidden' }, 403) }
   }
 
-  return { adminClient, actorProfile: profile }
+  return {
+    adminClient,
+    actorProfile: {
+      id: userId,
+      nickname: resolvedNickname,
+    },
+  }
 }
 
 async function downloadRecordBinary(adminClient: ReturnType<typeof createClient>, table: string, record: Record<string, unknown>) {

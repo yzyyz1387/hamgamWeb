@@ -222,6 +222,12 @@
                   <img :src="dup.image_url" :alt="dup.title" class="similar-image-item__thumb" />
                   <div class="similar-image-item__info">
                     <div class="similar-image-item__title">{{ dup.title }}</div>
+                    <div v-if="item.status === 'PENDING' && dup.slug" class="similar-image-item__actions">
+                      <mdui-button variant="text" size="small" @click.stop="insertImageToTop(item.id, dup.slug)">
+                        <mdui-icon slot="icon" name="arrow_upward--rounded"></mdui-icon>
+                        插入上方
+                      </mdui-button>
+                    </div>
                     <div class="similar-image-item__meta">
                       <span>上传者: {{ dup.uploader_display_name }}</span>
                       <a :href="`/image/${dup.slug}`" class="similar-image-item__link" @click.stop>查看详情页</a>
@@ -373,6 +379,9 @@
             <div class="review-dialog__similar-grid">
               <div v-for="dup in duplicateImages[reviewDialogItem.id]" :key="dup.id" class="review-dialog__similar-item" @click="goToImage(dup.slug)">
                 <img :src="dup.image_url" :alt="dup.title" />
+                <button v-if="reviewDialogItem.status === 'PENDING' && dup.slug" class="review-dialog__similar-insert" @click.stop="insertImageToTop(reviewDialogItem.id, dup.slug)" title="插入到备注">
+                  <mdui-icon name="arrow_upward--rounded"></mdui-icon>
+                </button>
               </div>
             </div>
           </div>
@@ -491,6 +500,7 @@ import { useRouter } from 'vue-router'
 import { copyText, formatDate } from '@/lib/format'
 import { createSubmissionPreview } from '@/lib/engagement'
 import { getErrorMessage } from '@/lib/errors'
+import { hammingDistance as rawHammingDistance } from '@/lib/phash'
 import { showToast } from '@/lib/toast'
 import { requireSupabase } from '@/lib/supabase'
 import { useGalleryStore } from '@/stores/gallery'
@@ -875,6 +885,66 @@ function toggleReviewHistory(submissionId) {
   expandedReviews[submissionId] = !expandedReviews[submissionId]
 }
 
+function isMissingSimilarityRpcError(error) {
+  const message = String(error?.message || '')
+  const code = String(error?.code || '')
+  return ['42883', 'PGRST202', 'PGRST203'].includes(code) ||
+    /does not exist/i.test(message) ||
+    /Could not find the function/i.test(message) ||
+    /Could not choose the best candidate function/i.test(message) ||
+    /function overloading can be resolved/i.test(message)
+}
+
+function hexBitHammingDistance(hash1, hash2) {
+  if (!hash1 || !hash2) return -1
+  const left = String(hash1).trim().toLowerCase()
+  const right = String(hash2).trim().toLowerCase()
+  if (left.length !== right.length) return rawHammingDistance(left, right)
+  if (!/^[0-9a-f]+$/.test(left) || !/^[0-9a-f]+$/.test(right)) {
+    return rawHammingDistance(left, right)
+  }
+
+  let distance = 0
+  for (let i = 0; i < left.length; i += 1) {
+    const xor = parseInt(left[i], 16) ^ parseInt(right[i], 16)
+    distance += xor.toString(2).replace(/0/g, '').length
+  }
+
+  return distance
+}
+
+async function loadSimilarImagesFallback(item) {
+  const supabase = requireSupabase()
+  const { data, error } = await supabase
+    .from('images')
+    .select('id, title, slug, image_url, uploader_display_name, phash')
+    .not('phash', 'is', null)
+    .limit(300)
+
+  if (error) throw error
+
+  similarImages[item.id] = (data || [])
+    .map((row) => ({
+      ...row,
+      hamming_distance: hexBitHammingDistance(item.phash, row.phash),
+    }))
+    .filter((row) => row.hamming_distance > 0 && row.hamming_distance <= 10)
+    .sort((a, b) => a.hamming_distance - b.hamming_distance)
+    .slice(0, 5)
+}
+
+async function loadDuplicateImagesFallback(item) {
+  const supabase = requireSupabase()
+  const { data, error } = await supabase
+    .from('images')
+    .select('id, title, slug, image_url, uploader_display_name, file_md5')
+    .eq('file_md5', item.file_md5)
+    .limit(10)
+
+  if (error) throw error
+  duplicateImages[item.id] = data || []
+}
+
 async function loadSimilarImages(item) {
   if (!item.phash || similarImages[item.id]) return
   
@@ -889,7 +959,16 @@ async function loadSimilarImages(item) {
     if (error) throw error
     similarImages[item.id] = data || []
   } catch (error) {
-    console.error('Failed to load similar images:', error)
+    if (isMissingSimilarityRpcError(error)) {
+      try {
+        await loadSimilarImagesFallback(item)
+        return
+      } catch (fallbackError) {
+        console.error('Failed to load similar images fallback:', fallbackError)
+      }
+    } else {
+      console.error('Failed to load similar images:', error)
+    }
     similarImages[item.id] = []
   }
 }
@@ -906,7 +985,16 @@ async function loadDuplicateImages(item) {
     if (error) throw error
     duplicateImages[item.id] = data || []
   } catch (error) {
-    console.error('Failed to load duplicate images:', error)
+    if (isMissingSimilarityRpcError(error)) {
+      try {
+        await loadDuplicateImagesFallback(item)
+        return
+      } catch (fallbackError) {
+        console.error('Failed to load duplicate images fallback:', fallbackError)
+      }
+    } else {
+      console.error('Failed to load duplicate images:', error)
+    }
     duplicateImages[item.id] = []
   }
 }
@@ -1838,3 +1926,4 @@ function insertImageToTop(submissionId, slug) {
 }
 
 </style>
+
